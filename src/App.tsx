@@ -1,0 +1,1488 @@
+/**
+ * Sakaar Outpost: MCU Space Colony
+ * A dystopian space colony builder and management simulation powered by Marvel Cinematic Universe heroes.
+ */
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  Radio, 
+  Users, 
+  Compass, 
+  Cpu, 
+  ArrowLeftRight, 
+  AlertTriangle,
+  Zap,
+  Wrench,
+  Sprout,
+  Wind,
+  Shield,
+  Layers,
+  Sparkles,
+  RefreshCw
+} from 'lucide-react';
+
+import { 
+  BuildingType, 
+  ColonyBuilding, 
+  ColonyCrisis, 
+  ColonyResources, 
+  GameLogEntry, 
+  GridTile, 
+  MCUHero, 
+  PlanetaryExpedition, 
+  ResourceRates, 
+  TechNode, 
+  TerrainType 
+} from './types';
+
+import { INITIAL_HEROES } from './data/mcuHeroes';
+import { BUILDING_DEFINITIONS } from './data/buildings';
+import { INITIAL_TECH_TREE } from './data/techTree';
+import { CRISIS_TEMPLATES } from './data/crises';
+import { INITIAL_EXPEDITIONS } from './data/expeditions';
+import { soundFx } from './utils/audio';
+
+import { HeaderHud } from './components/HeaderHud';
+import { ColonyGrid } from './components/ColonyGrid';
+import { HeroDrawer } from './components/HeroDrawer';
+import { BuildingPaletteModal } from './components/BuildingPaletteModal';
+import { BuildingDetailsModal } from './components/BuildingDetailsModal';
+import { ExpeditionsView } from './components/ExpeditionsView';
+import { TechLabView } from './components/TechLabView';
+import { TradeDepotView } from './components/TradeDepotView';
+import { CrisisModal } from './components/CrisisModal';
+import { ColonyLogDrawer } from './components/ColonyLogDrawer';
+import { GuideModal } from './components/GuideModal';
+
+const SAVE_KEY = 'sakaar_outpost_colony_v1';
+
+// Initial Grid Generator (5x4)
+function createInitialGrid(): { tiles: GridTile[]; buildings: ColonyBuilding[] } {
+  const terrains: { type: TerrainType; name: string; scrap: number; power: number; hazard: number }[] = [
+    { type: 'open_scrap', name: 'Scrap Dune', scrap: 10, power: 0, hazard: 0 },
+    { type: 'shipwreck_hulk', name: 'Kree Frigate Hulk', scrap: 25, power: 0, hazard: 0 },
+    { type: 'geothermal_vent', name: 'Geothermal Rift', scrap: 0, power: 30, hazard: 1 },
+    { type: 'crystal_vein', name: 'Tesseract Crystal Seam', scrap: 15, power: 15, hazard: 0 },
+    { type: 'toxic_fissure', name: 'Sulfur Fissure', scrap: 5, power: 10, hazard: 2 },
+    { type: 'ruined_arena', name: 'Gladiator Arena Fragment', scrap: 20, power: 0, hazard: 0 },
+  ];
+
+  const tiles: GridTile[] = [];
+  const buildings: ColonyBuilding[] = [];
+
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 5; x++) {
+      const isCenter = x === 2 && y === 2;
+      const isArcSlot = x === 1 && y === 2;
+      const isScrapSlot = x === 3 && y === 2;
+      const isBioSlot = x === 2 && y === 1;
+
+      // Pick terrain deterministically
+      const tIdx = (x * 3 + y * 5) % terrains.length;
+      const terrain = terrains[tIdx];
+
+      let buildingId: string | null = null;
+
+      if (isCenter) {
+        const bId = 'b_command_center';
+        buildingId = bId;
+        buildings.push({
+          id: bId,
+          type: 'command_center',
+          gridX: x,
+          gridY: y,
+          level: 1,
+          maxLevel: 3,
+          health: 500,
+          maxHealth: 500,
+          isOperating: true,
+          assignedHeroId: null,
+          assignedWorkers: 1,
+          upgradingUntil: null,
+        });
+      } else if (isArcSlot) {
+        const bId = 'b_arc_initial';
+        buildingId = bId;
+        buildings.push({
+          id: bId,
+          type: 'arc_reactor',
+          gridX: x,
+          gridY: y,
+          level: 1,
+          maxLevel: 3,
+          health: 300,
+          maxHealth: 300,
+          isOperating: true,
+          assignedHeroId: 'iron_man',
+          assignedWorkers: 2,
+          upgradingUntil: null,
+        });
+      } else if (isScrapSlot) {
+        const bId = 'b_scrap_initial';
+        buildingId = bId;
+        buildings.push({
+          id: bId,
+          type: 'scrap_foundry',
+          gridX: x,
+          gridY: y,
+          level: 1,
+          maxLevel: 3,
+          health: 250,
+          maxHealth: 250,
+          isOperating: true,
+          assignedHeroId: 'rocket',
+          assignedWorkers: 2,
+          upgradingUntil: null,
+        });
+      } else if (isBioSlot) {
+        const bId = 'b_bio_initial';
+        buildingId = bId;
+        buildings.push({
+          id: bId,
+          type: 'hydroponic_dome',
+          gridX: x,
+          gridY: y,
+          level: 1,
+          maxLevel: 3,
+          health: 250,
+          maxHealth: 250,
+          isOperating: true,
+          assignedHeroId: 'hulk',
+          assignedWorkers: 2,
+          upgradingUntil: null,
+        });
+      }
+
+      tiles.push({
+        x,
+        y,
+        terrain: terrain.type,
+        terrainName: terrain.name,
+        scrapYieldBonus: terrain.scrap,
+        powerYieldBonus: terrain.power,
+        hazardLevel: terrain.hazard,
+        cleared: true,
+        buildingId,
+      });
+    }
+  }
+
+  return { tiles, buildings };
+}
+
+export default function App() {
+  // Game Setup & State
+  const initialSetup = useMemo(() => createInitialGrid(), []);
+
+  const [resources, setResources] = useState<ColonyResources>({
+    power: 120,
+    maxPower: 400,
+    scrap: 220,
+    maxScrap: 600,
+    food: 100,
+    maxFood: 350,
+    oxygen: 92,
+    vibraniumCredits: 45,
+    population: 14,
+    maxPopulation: 25,
+    assignedWorkers: 7,
+    morale: 85,
+    defenseRating: 30,
+  });
+
+  const [tiles, setTiles] = useState<GridTile[]>(initialSetup.tiles);
+  const [buildings, setBuildings] = useState<ColonyBuilding[]>(initialSetup.buildings);
+  const [heroes, setHeroes] = useState<MCUHero[]>(() => {
+    return INITIAL_HEROES.map((h) => {
+      if (h.id === 'iron_man') return { ...h, assignedBuildingId: 'b_arc_initial', status: 'assigned' };
+      if (h.id === 'rocket') return { ...h, assignedBuildingId: 'b_scrap_initial', status: 'assigned' };
+      if (h.id === 'hulk') return { ...h, assignedBuildingId: 'b_bio_initial', status: 'assigned' };
+      return h;
+    });
+  });
+
+  const [techTree, setTechTree] = useState<TechNode[]>(INITIAL_TECH_TREE);
+  const [expeditions, setExpeditions] = useState<PlanetaryExpedition[]>(INITIAL_EXPEDITIONS);
+  const [cycle, setCycle] = useState<number>(1);
+  const [gameSpeed, setGameSpeed] = useState<number>(1);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'grid' | 'expeditions' | 'tech' | 'trade'>('grid');
+
+  // Active Crisis
+  const [activeCrisis, setActiveCrisis] = useState<ColonyCrisis | null>(null);
+  const nextCrisisTimerRef = useRef<number>(65);
+
+  // Temporary buffs (e.g. abilities)
+  const [overclockUntil, setOverclockUntil] = useState<number>(0);
+  const [mirrorDimensionUntil, setMirrorDimensionUntil] = useState<number>(0);
+
+  // Modals
+  const [isHeroDrawerOpen, setIsHeroDrawerOpen] = useState<boolean>(false);
+  const [isLogDrawerOpen, setIsLogDrawerOpen] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [selectedTileForBuild, setSelectedTileForBuild] = useState<GridTile | null>(null);
+  const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
+
+  // Logs
+  const [logs, setLogs] = useState<GameLogEntry[]>([
+    {
+      id: 'log_0',
+      timestamp: Date.now(),
+      cycle: 1,
+      type: 'info',
+      message: 'Avengers Sakaar Outpost initialized. Tony Stark, Rocket Raccoon, and Dr. Banner have assumed station posts.',
+    }
+  ]);
+
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+
+  // Add Log Helper
+  const addLog = (message: string, type: GameLogEntry['type'] = 'info') => {
+    setLogs((prev) => [
+      {
+        id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        timestamp: Date.now(),
+        cycle,
+        type,
+        message,
+      },
+      ...prev.slice(0, 49),
+    ]);
+  };
+
+  // Researched tech IDs
+  const researchedTechIds = useMemo(() => {
+    return techTree.filter(t => t.researched).map(t => t.id);
+  }, [techTree]);
+
+  // Compute live resource rates
+  const rates: ResourceRates = useMemo(() => {
+    let powerGen = 0;
+    let powerCost = 0;
+    let scrapGen = 0;
+    let foodGen = 0;
+    let oxygenGen = 0;
+    let moraleGen = 0;
+
+    const isOverclocked = Date.now() < overclockUntil;
+    const overclockMultiplier = isOverclocked ? 1.5 : 1.0;
+
+    buildings.forEach((b) => {
+      const def = BUILDING_DEFINITIONS[b.type];
+      if (!def) return;
+
+      const hero = b.assignedHeroId ? heroes.find(h => h.id === b.assignedHeroId) : null;
+      const isAffinity = hero && hero.buildingAffinity === b.type;
+      const levelMult = 1 + (b.level - 1) * 0.5;
+      const workerBonus = 1 + b.assignedWorkers * 0.2;
+
+      // Power
+      if (def.basePowerGen > 0) {
+        let pGen = def.basePowerGen * levelMult;
+        if (isAffinity) pGen *= 1.65; // Tony's affinity
+        if (researchedTechIds.includes('arc_overcharge')) pGen *= 1.35;
+        powerGen += pGen * overclockMultiplier;
+      }
+
+      if (b.isOperating && def.basePowerCost > 0) {
+        let pCost = def.basePowerCost;
+        if (researchedTechIds.includes('vibranium_mesh')) pCost *= 0.85;
+        powerCost += pCost;
+      }
+
+      // If building is operating, calculate outputs
+      if (b.isOperating) {
+        if (def.baseScrapGen > 0) {
+          let sGen = def.baseScrapGen * levelMult * workerBonus;
+          if (isAffinity) sGen *= 1.8; // Rocket's affinity
+          scrapGen += sGen * overclockMultiplier;
+        }
+
+        if (def.baseFoodGen > 0) {
+          let fGen = def.baseFoodGen * levelMult * workerBonus;
+          if (isAffinity) fGen *= 1.7; // Bruce's affinity
+          if (researchedTechIds.includes('gamma_photosynthesis')) fGen *= 1.5;
+          foodGen += fGen * overclockMultiplier;
+        }
+
+        if (def.baseOxygenGen > 0) {
+          let oGen = def.baseOxygenGen * levelMult;
+          if (isAffinity) oGen *= 1.6; // Shuri's affinity
+          if (researchedTechIds.includes('vibranium_mesh')) oGen *= 1.4;
+          oxygenGen += oGen;
+        }
+
+        if (def.baseMoraleGen > 0) {
+          moraleGen += def.baseMoraleGen * levelMult;
+        }
+      }
+    });
+
+    // Passive Tech perks
+    if (researchedTechIds.includes('celestial_tap')) {
+      powerGen += 100;
+    }
+
+    const powerNet = powerGen - powerCost;
+    const foodCost = resources.population * 0.8;
+    const foodNet = foodGen - foodCost;
+
+    // Atmospheric oxygen depletion from Sakaar's toxic smog (-1.8/s base)
+    const oxygenChange = (oxygenGen * 0.15) - 1.2;
+
+    // Morale change factors
+    let moraleChange = 0;
+    if (resources.power <= 0) moraleChange -= 1.5;
+    if (resources.food <= 0) moraleChange -= 2.0;
+    if (resources.oxygen < 40) moraleChange -= 2.5;
+    if (resources.food > 30 && resources.power > 20 && resources.oxygen >= 70) {
+      moraleChange += 0.5 + (moraleGen * 0.05);
+    }
+
+    return {
+      powerNet,
+      powerGen,
+      powerCost,
+      scrapNet: scrapGen,
+      foodNet,
+      foodGen,
+      foodCost,
+      oxygenChange,
+      moraleChange,
+    };
+  }, [buildings, heroes, researchedTechIds, resources.population, resources.power, resources.food, resources.oxygen, overclockUntil]);
+
+  // Main Simulation Loop (1-second tick scaled by gameSpeed)
+  useEffect(() => {
+    if (gameSpeed === 0) return;
+
+    const interval = setInterval(() => {
+      setCurrentTime(Date.now());
+
+      setResources((prev) => {
+        // Power update
+        let newPower = Math.min(prev.maxPower, Math.max(0, prev.power + (rates.powerNet / 2)));
+        
+        // Scrap update
+        let newScrap = Math.min(prev.maxScrap, prev.scrap + rates.scrapNet);
+
+        // Food update
+        let newFood = Math.min(prev.maxFood, Math.max(0, prev.food + rates.foodNet));
+
+        // Oxygen update
+        let newOxygen = Math.min(100, Math.max(0, prev.oxygen + rates.oxygenChange));
+
+        // Morale update
+        let newMorale = Math.min(100, Math.max(5, prev.morale + rates.moraleChange));
+
+        // Passive Vibranium units
+        let newCredits = prev.vibraniumCredits;
+        if (researchedTechIds.includes('celestial_tap')) {
+          newCredits += 0.5;
+        }
+
+        // Starvation and blackout consequences
+        if (prev.food <= 0 && prev.population > 5) {
+          if (Math.random() < 0.05) {
+            addLog('Famine alert! A malnourished scavenger perished. Keep hydro-domes stocked!', 'danger');
+            soundFx.playAlarm();
+            return {
+              ...prev,
+              population: Math.max(5, prev.population - 1),
+              assignedWorkers: Math.min(prev.assignedWorkers, prev.population - 1),
+              food: 0,
+              morale: Math.max(5, prev.morale - 10),
+            };
+          }
+        }
+
+        if (prev.oxygen <= 15) {
+          if (Math.random() < 0.08) {
+            addLog('Suffocation alert! Toxic smog breached habitats. Clean air scrubbers needed!', 'danger');
+            soundFx.playAlarm();
+          }
+        }
+
+        return {
+          ...prev,
+          power: newPower,
+          scrap: newScrap,
+          food: newFood,
+          oxygen: newOxygen,
+          morale: newMorale,
+          vibraniumCredits: newCredits,
+        };
+      });
+
+      // Update building power operational states
+      setBuildings((prevBuildings) => {
+        const isPowerDepleted = resources.power <= 0;
+        return prevBuildings.map((b) => {
+          if (b.type === 'command_center' || b.type === 'arc_reactor') {
+            return { ...b, isOperating: true };
+          }
+          if (isPowerDepleted) {
+            return { ...b, isOperating: false };
+          }
+          return { ...b, isOperating: true };
+        });
+      });
+
+      // Update active expeditions
+      setExpeditions((prevExpeditions) => {
+        return prevExpeditions.map((exp) => {
+          if (exp.status === 'in_progress' && exp.endTime && Date.now() >= exp.endTime) {
+            soundFx.playSuccess();
+            addLog(`Quinjet mission returned from ${exp.name}! Spoils ready to claim at the launchpad.`, 'success');
+            return { ...exp, status: 'completed' };
+          }
+          return exp;
+        });
+      });
+
+      // Cycle Counter & Random Crisis Generator
+      nextCrisisTimerRef.current -= 1;
+      if (nextCrisisTimerRef.current <= 0 && !activeCrisis) {
+        // Trigger a random crisis!
+        const template = CRISIS_TEMPLATES[Math.floor(Math.random() * CRISIS_TEMPLATES.length)];
+        const newCrisis: ColonyCrisis = {
+          ...template,
+          id: `crisis_${Date.now()}`,
+          timeLeftSec: template.maxTimeSec,
+        };
+        setActiveCrisis(newCrisis);
+        soundFx.playAlarm();
+        addLog(`CRISIS ALERT: ${template.title} has begun! Immediate response required!`, 'crisis');
+        nextCrisisTimerRef.current = 75 + Math.floor(Math.random() * 30);
+      }
+
+      // If crisis is currently counting down
+      if (activeCrisis) {
+        setActiveCrisis((prevCrisis) => {
+          if (!prevCrisis) return null;
+          if (prevCrisis.timeLeftSec <= 1) {
+            // Crisis timed out without resolution!
+            soundFx.playAlarm();
+            addLog(`Crisis failed to resolve in time! Colony suffered heavy damage and lost scrap.`, 'danger');
+            
+            // Damage random buildings
+            setBuildings((curr) => curr.map((b) => ({
+              ...b,
+              health: Math.max(20, b.health - 60),
+            })));
+
+            setResources((curr) => ({
+              ...curr,
+              scrap: Math.max(0, curr.scrap - 80),
+              morale: Math.max(10, curr.morale - 25),
+            }));
+
+            return null;
+          }
+          return { ...prevCrisis, timeLeftSec: prevCrisis.timeLeftSec - 1 };
+        });
+      }
+
+    }, 1000 / gameSpeed);
+
+    return () => clearInterval(interval);
+  }, [gameSpeed, rates, activeCrisis, resources.power, resources.population, resources.food, resources.oxygen, researchedTechIds]);
+
+  // Handle Sol Cycle Increment (every 60s)
+  useEffect(() => {
+    if (gameSpeed === 0) return;
+    const cycleInterval = setInterval(() => {
+      setCycle((c) => {
+        const nextC = c + 1;
+        addLog(`Sol Cycle ${nextC} dawned over Sakaar. Transponders scanning wasteland scrap orbits.`, 'info');
+        return nextC;
+      });
+    }, 60000 / gameSpeed);
+
+    return () => clearInterval(cycleInterval);
+  }, [gameSpeed]);
+
+  // Construct New Building
+  const handleConstructBuilding = (type: BuildingType) => {
+    if (!selectedTileForBuild) return;
+    const def = BUILDING_DEFINITIONS[type];
+    if (!def) return;
+
+    if (resources.scrap < def.baseCost.scrap || resources.vibraniumCredits < def.baseCost.vibraniumCredits) {
+      addLog('Insufficient resources to construct this sector structure.', 'warning');
+      return;
+    }
+
+    const newBuildingId = `b_${type}_${Date.now()}`;
+    const newBuilding: ColonyBuilding = {
+      id: newBuildingId,
+      type,
+      gridX: selectedTileForBuild.x,
+      gridY: selectedTileForBuild.y,
+      level: 1,
+      maxLevel: 3,
+      health: 250,
+      maxHealth: 250,
+      isOperating: true,
+      assignedHeroId: null,
+      assignedWorkers: 0,
+      upgradingUntil: null,
+    };
+
+    setResources((prev) => ({
+      ...prev,
+      scrap: prev.scrap - def.baseCost.scrap,
+      vibraniumCredits: prev.vibraniumCredits - def.baseCost.vibraniumCredits,
+      maxPopulation: prev.maxPopulation + def.baseHousing,
+      defenseRating: prev.defenseRating + def.baseDefense,
+    }));
+
+    setBuildings((prev) => [...prev, newBuilding]);
+    setTiles((prev) => prev.map((t) => (t.x === selectedTileForBuild.x && t.y === selectedTileForBuild.y ? { ...t, buildingId: newBuildingId } : t)));
+
+    soundFx.playBuild();
+    addLog(`Constructed ${def.name} at Sector (${selectedTileForBuild.x}, ${selectedTileForBuild.y}).`, 'success');
+    setSelectedTileForBuild(null);
+  };
+
+  // Upgrade Building
+  const handleUpgradeBuilding = (buildingId: string) => {
+    const building = buildings.find(b => b.id === buildingId);
+    if (!building) return;
+    const def = BUILDING_DEFINITIONS[building.type];
+    if (!def) return;
+
+    const upgradeScrapCost = Math.round(def.baseCost.scrap * (building.level + 0.5));
+    const upgradeVibraniumCost = Math.round(Math.max(15, def.baseCost.vibraniumCredits * 1.5 * building.level));
+
+    if (resources.scrap < upgradeScrapCost || resources.vibraniumCredits < upgradeVibraniumCost) {
+      addLog('Insufficient resources for sector upgrade.', 'warning');
+      return;
+    }
+
+    setResources(prev => ({
+      ...prev,
+      scrap: prev.scrap - upgradeScrapCost,
+      vibraniumCredits: prev.vibraniumCredits - upgradeVibraniumCost,
+      defenseRating: prev.defenseRating + (def.baseDefense ? Math.round(def.baseDefense * 0.5) : 0),
+    }));
+
+    setBuildings(prev => prev.map(b => {
+      if (b.id === buildingId) {
+        return {
+          ...b,
+          level: b.level + 1,
+          health: b.maxHealth + 100,
+          maxHealth: b.maxHealth + 100,
+        };
+      }
+      return b;
+    }));
+
+    soundFx.playSuccess();
+    addLog(`Upgraded ${def.name} to MK-${building.level + 1}! Output and durability elevated.`, 'success');
+  };
+
+  // Repair Building
+  const handleRepairBuilding = (buildingId: string) => {
+    const building = buildings.find(b => b.id === buildingId);
+    if (!building) return;
+    const def = BUILDING_DEFINITIONS[building.type];
+    if (!def) return;
+
+    const hasDodcDiscount = researchedTechIds.includes('dodc_salvage_protocol');
+    const baseCost = (1 - building.health / building.maxHealth) * def.baseCost.scrap * 0.75;
+    const repairScrapCost = Math.round(hasDodcDiscount ? baseCost * 0.5 : baseCost);
+
+    if (resources.scrap < repairScrapCost) {
+      addLog('Insufficient scrap to conduct structural repairs.', 'warning');
+      return;
+    }
+
+    setResources(prev => ({
+      ...prev,
+      scrap: prev.scrap - repairScrapCost,
+    }));
+
+    setBuildings(prev => prev.map(b => (b.id === buildingId ? { ...b, health: b.maxHealth } : b)));
+    soundFx.playBuild();
+    addLog(`Repaired structural integrity of ${def.name} back to 100%${hasDodcDiscount ? ' (DODC 50% discount applied)' : ''}.`, 'success');
+  };
+
+  // Assign Station Chief (MCU Hero)
+  const handleAssignHero = (buildingId: string, heroId: string | null) => {
+    // Unassign previous hero if any
+    setBuildings(prev => prev.map(b => {
+      if (b.id === buildingId) {
+        return { ...b, assignedHeroId: heroId };
+      }
+      if (heroId && b.assignedHeroId === heroId) {
+        return { ...b, assignedHeroId: null };
+      }
+      return b;
+    }));
+
+    setHeroes(prev => prev.map(h => {
+      if (h.id === heroId) {
+        return { ...h, assignedBuildingId: buildingId, status: 'assigned' };
+      }
+      if (h.assignedBuildingId === buildingId && h.id !== heroId) {
+        return { ...h, assignedBuildingId: null, status: 'idle' };
+      }
+      return h;
+    }));
+
+    soundFx.playClick();
+    if (heroId) {
+      const hero = heroes.find(h => h.id === heroId);
+      const b = buildings.find(item => item.id === buildingId);
+      const defName = b ? BUILDING_DEFINITIONS[b.type]?.name : 'Sector';
+      addLog(`${hero?.heroName} assigned as Station Chief of ${defName}!`, 'info');
+    }
+  };
+
+  // Unassign Hero directly from roster
+  const handleUnassignHero = (heroId: string) => {
+    setHeroes(prev => prev.map(h => h.id === heroId ? { ...h, assignedBuildingId: null, status: 'idle' } : h));
+    setBuildings(prev => prev.map(b => b.assignedHeroId === heroId ? { ...b, assignedHeroId: null } : b));
+    soundFx.playClick();
+  };
+
+  // Change Workers
+  const handleChangeWorkers = (buildingId: string, delta: number) => {
+    const freeWorkers = resources.population - resources.assignedWorkers;
+    if (delta > 0 && freeWorkers <= 0) return;
+
+    setBuildings(prev => prev.map(b => {
+      if (b.id === buildingId) {
+        const newCount = Math.max(0, b.assignedWorkers + delta);
+        return { ...b, assignedWorkers: newCount };
+      }
+      return b;
+    }));
+
+    setResources(prev => ({
+      ...prev,
+      assignedWorkers: Math.max(0, prev.assignedWorkers + delta),
+    }));
+
+    soundFx.playClick();
+  };
+
+  // Demolish Building
+  const handleDemolishBuilding = (buildingId: string) => {
+    const building = buildings.find(b => b.id === buildingId);
+    if (!building || building.type === 'command_center') return;
+    const def = BUILDING_DEFINITIONS[building.type];
+
+    const refundScrap = Math.round(def.baseCost.scrap * 0.6);
+
+    setResources(prev => ({
+      ...prev,
+      scrap: prev.scrap + refundScrap,
+      assignedWorkers: Math.max(0, prev.assignedWorkers - building.assignedWorkers),
+      maxPopulation: Math.max(10, prev.maxPopulation - def.baseHousing),
+      defenseRating: Math.max(0, prev.defenseRating - (def.baseDefense * building.level)),
+    }));
+
+    // Free hero if assigned
+    if (building.assignedHeroId) {
+      handleUnassignHero(building.assignedHeroId);
+    }
+
+    setTiles(prev => prev.map(t => (t.buildingId === buildingId ? { ...t, buildingId: null } : t)));
+    setBuildings(prev => prev.filter(b => b.id !== buildingId));
+
+    setSelectedBuildingId(null);
+    soundFx.playClick();
+    addLog(`Deconstructed ${def.name}. Salvaged +${refundScrap} scrap.`, 'info');
+  };
+
+  // Trigger Hero Ability
+  const handleTriggerAbility = (heroId: string) => {
+    const hero = heroes.find(h => h.id === heroId);
+    if (!hero) return;
+
+    soundFx.playAbility();
+    setHeroes(prev => prev.map(h => h.id === heroId ? { ...h, ability: { ...h.ability, lastUsedAt: Date.now() } } : h));
+
+    switch (hero.ability.actionType) {
+      case 'power_surge': // Tony Stark
+        setResources(prev => ({ ...prev, power: Math.min(prev.maxPower, prev.power + 350) }));
+        addLog(`Tony Stark activated UNIBEAM PROTOCOL! Injected +350 MW into Arc Batteries.`, 'success');
+        break;
+
+      case 'bio_heal': // Bruce Banner
+        setBuildings(prev => prev.map(b => ({ ...b, health: b.maxHealth })));
+        setResources(prev => ({ ...prev, morale: Math.min(100, prev.morale + 25) }));
+        addLog(`Bruce Banner initiated HULK OUT REPAIR! All sector hull breaches restored to 100% (+25 Morale).`, 'success');
+        break;
+
+      case 'scrap_blast': // Rocket Raccoon
+        setResources(prev => ({ ...prev, scrap: Math.min(prev.maxScrap, prev.scrap + 280) }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Rocket fired the HADRON ENFORCER! Vaporized Sakaaran raiders and harvested +280 Scrap!`, 'success');
+        } else {
+          addLog(`Rocket fired the HADRON ENFORCER! Demolished wasteland scrap hill into +280 refined materials.`, 'success');
+        }
+        break;
+
+      case 'shield_overcharge': // Shuri
+        setResources(prev => ({ ...prev, oxygen: 100, power: Math.min(prev.maxPower, prev.power + 200) }));
+        addLog(`Shuri deployed KINETIC ABSORPTION MATRIX! Atmospheric O₂ purified to 100% (+200 Power).`, 'success');
+        break;
+
+      case 'lightning_strike': // Thor
+        setResources(prev => ({ 
+          ...prev, 
+          power: Math.min(prev.maxPower, prev.power + 300),
+          morale: Math.min(100, prev.morale + 35),
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'storm') {
+          setActiveCrisis(null);
+          addLog(`Thor roared "BRING ME THANOS!" and channeled the plasma storm into +300 MW batteries!`, 'success');
+        } else {
+          addLog(`Thor summoned Bifrost celestial thunder, electrifying the power grid (+300 MW, +35 Morale)!`, 'success');
+        }
+        break;
+
+      case 'overclock': // Nebula
+        setOverclockUntil(Date.now() + 40000);
+        addLog(`Nebula initiated CYBERNETIC OVERCLOCK! All colony resource production boosted 50% for 40 seconds.`, 'success');
+        break;
+
+      case 'trade_windfall': // Peter Quill
+        setResources(prev => ({ ...prev, vibraniumCredits: prev.vibraniumCredits + 80 }));
+        if (activeCrisis) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 30 } : null);
+        }
+        addLog(`Peter Quill performed DANCE-OFF DISTRACTION! Earned +80 Vibranium Credits and stalled crisis.`, 'success');
+        break;
+
+      case 'defense_ambush': // Gamora
+        setResources(prev => ({ 
+          ...prev, 
+          scrap: Math.min(prev.maxScrap, prev.scrap + 150),
+          morale: Math.min(100, prev.morale + 25),
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Gamora executed GODSLAYER AMBUSH! Marauders decimated with zero colony damage taken!`, 'success');
+        } else {
+          addLog(`Gamora ambushed Sakaaran gladiator scavengers on the perimeter (+150 Scrap, +25 Morale).`, 'success');
+        }
+        break;
+
+      case 'mirror_dimension': // Doctor Strange
+        setMirrorDimensionUntil(Date.now() + 25000);
+        if (activeCrisis) {
+          setActiveCrisis(null);
+          addLog(`Doctor Strange cast MIRROR DIMENSION SHIELD! Phased the colony out of physical reality, neutralizing the crisis!`, 'success');
+        } else {
+          addLog(`Doctor Strange cast MIRROR DIMENSION SHIELD! Colony is completely shielded for 25s.`, 'success');
+        }
+        break;
+
+      case 'orbital_recon': // Carol Danvers
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits + 120,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 200),
+        }));
+        addLog(`Carol Danvers streaked into orbit with BINARY SWEEP! Retrieved +120 Credits & +200 Scrap from high-orbit wrecks.`, 'success');
+        break;
+
+      case 'tva_chrono_reset': // Mobius M. Mobius (TVA)
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 150),
+          morale: Math.min(100, prev.morale + 15),
+        }));
+        if (activeCrisis) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 45 } : null);
+          addLog(`Agent Mobius engaged TEMPAD CHRONO-RESET! Rewound timeline anomalies, extended crisis countdown by +45s, and injected +150 MW power!`, 'success');
+        } else {
+          addLog(`Agent Mobius stabilized localized timeline variations with his TVA TemPad (+150 Power, +15 Morale).`, 'success');
+        }
+        break;
+
+      case 'oxe_buyout': // Aiko Maki (OXE Group)
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits + 160,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 220),
+          morale: Math.min(100, prev.morale + 10),
+        }));
+        addLog(`Aiko Maki executed HOSTILE BUYOUT PROTOCOL! Extracted +160 Vibranium Credits and +220 refined Scrap through aggressive corporate arbitrage.`, 'success');
+        break;
+
+      case 'dodc_lockdown': // Agent Cleary (Damage Control)
+        setBuildings(prev => prev.map(b => ({ ...b, health: b.maxHealth })));
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 260),
+          defenseRating: prev.defenseRating + 15,
+        }));
+        addLog(`Agent Cleary deployed DODC HEAVY DRONE CLEANUP! All damaged colony buildings restored to 100% integrity (+260 Scrap, +15 Defense).`, 'success');
+        break;
+
+      case 'spider_web_strike': // Spider-Man (Peter Parker - Brand New Day)
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 220),
+          morale: Math.min(100, prev.morale + 20),
+          defenseRating: prev.defenseRating + 25,
+        }));
+        if (activeCrisis && (activeCrisis.threatType === 'raiders' || activeCrisis.threatType === 'quake')) {
+          setActiveCrisis(null);
+          addLog(`Spider-Man webbed up falling sector debris & trapped invaders with BRAND NEW DAY WEB-GRID! Crisis averted (+220 Scrap, +20 Morale, +25 Defense).`, 'success');
+        } else {
+          addLog(`Spider-Man slung web-lines across the sector, catching falling orbital debris (+220 Scrap, +20 Morale, +25 Defense).`, 'success');
+        }
+        break;
+
+      case 'ten_rings_strike': // Shang-Chi (Ten Rings)
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 220),
+          morale: Math.min(100, prev.morale + 30),
+          defenseRating: prev.defenseRating + 30,
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Shang-Chi unleashed TEN RINGS COSMIC SHOCKWAVE! Hostile warband was pulverized by flying rings (+220 Power, +30 Morale).`, 'success');
+        } else {
+          addLog(`Shang-Chi channeled Ta Lo cosmic energy through the Ten Rings (+220 Power, +30 Morale, +30 Defense).`, 'success');
+        }
+        break;
+
+      case 'ionic_overdrive': // Wonder Man (Simon Williams)
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 320),
+          morale: Math.min(100, prev.morale + 25),
+        }));
+        addLog(`Wonder Man went into IONIC OVERDRIVE! Electrified the entire grid with pure ionic energy (+320 Power, +25 Morale).`, 'success');
+        break;
+
+      case 'widow_tactical_strike': // Yelena Belova (White Widow)
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 200),
+          vibraniumCredits: prev.vibraniumCredits + 30,
+          defenseRating: prev.defenseRating + 25,
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Yelena Belova unleashed WIDOW'S BITE FLASHBANG AMBUSH! Marauder squads disoriented and captured (+200 Scrap, +30 Credits).`, 'success');
+        } else {
+          addLog(`Yelena Belova executed a stealth sweep of the outer perimeter (+200 Scrap, +30 Credits, +25 Defense).`, 'success');
+        }
+        break;
+
+      case 'vibranium_arm_smash': // Bucky Barnes (Winter Soldier)
+        setResources(prev => ({
+          ...prev,
+          defenseRating: prev.defenseRating + 40,
+          vibraniumCredits: prev.vibraniumCredits + 120,
+          morale: Math.min(100, prev.morale + 15),
+        }));
+        if (activeCrisis && (activeCrisis.threatType === 'raiders' || activeCrisis.threatType === 'quake')) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 30 } : null);
+          addLog(`Bucky Barnes slammed his Wakandan vibranium arm into the ground with KINETIC BREAKER! Fortified defenses (+40 Defense, +120 Credits).`, 'success');
+        } else {
+          addLog(`Bucky Barnes reinforced colony battle lines with his Vibranium arm (+40 Defense, +120 Credits, +15 Morale).`, 'success');
+        }
+        break;
+
+      case 'usagent_shield_slam': // U.S. Agent (John Walker)
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 190),
+          defenseRating: prev.defenseRating + 35,
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`John Walker engaged in a brutal SHIELD RICOCHET SWEEP! Decimated raider boarding skiffs (+190 Scrap, +35 Defense).`, 'success');
+        } else {
+          addLog(`John Walker patrolled the outer wasteland and neutralized scavenger outposts (+190 Scrap, +35 Defense).`, 'success');
+        }
+        break;
+
+      case 'red_guardian_brawl': // Red Guardian (Alexei Shostakov)
+        setResources(prev => ({
+          ...prev,
+          morale: Math.min(100, prev.morale + 35),
+          scrap: Math.min(prev.maxScrap, prev.scrap + 180),
+          food: Math.min(prev.maxFood, prev.food + 50),
+        }));
+        addLog(`Red Guardian launched RED BRAWN HEROIC CHARGE! Tore through scrap barriers, hosted a glorious feast, and raised Morale by +35% (+180 Scrap, +50 Food).`, 'success');
+        break;
+
+      case 'captain_america_rally': // Sam Wilson (Captain America)
+        setResources(prev => ({
+          ...prev,
+          morale: Math.min(100, prev.morale + 35),
+          defenseRating: prev.defenseRating + 35,
+          vibraniumCredits: prev.vibraniumCredits + 120,
+        }));
+        if (activeCrisis) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 40 } : null);
+          addLog(`Captain America (Sam Wilson) soared overhead with VIBRANIUM WING SONIC DIVE! Rallied all colonists (+35 Morale, +35 Defense, +120 Credits, +40s crisis delay).`, 'success');
+        } else {
+          addLog(`Captain America (Sam Wilson) rallied the colony from the skies with his shield and vibranium wings (+35 Morale, +35 Defense, +120 Credits).`, 'success');
+        }
+        break;
+
+      case 'radar_sense_alert': // Matt Murdock (Daredevil)
+        setResources(prev => ({
+          ...prev,
+          defenseRating: prev.defenseRating + 35,
+          morale: Math.min(100, prev.morale + 20),
+        }));
+        if (activeCrisis) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 35 } : null);
+          addLog(`Daredevil used BORN AGAIN RADAR PRECOGNITION to pinpoint subterranean tremors and hostile movement (+35 Defense, +20 Morale, +35s crisis window).`, 'success');
+        } else {
+          addLog(`Daredevil mapped subterranean acoustic vibrations across the colony (+35 Defense, +20 Morale).`, 'success');
+        }
+        break;
+
+      case 'trick_arrow_salvo': // Kate Bishop (Hawkeye)
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 240),
+          power: Math.min(prev.maxPower, prev.power + 60),
+          vibraniumCredits: prev.vibraniumCredits + 25,
+        }));
+        addLog(`Kate Bishop fired a PYM TRICK ARROW SALVO! Shrunk giant spaceship engine blocks into compact salvage (+240 Scrap, +60 Power, +25 Credits).`, 'success');
+        break;
+    }
+  };
+
+  // Launch Quinjet Away-Team
+  const handleLaunchExpedition = (expeditionId: string, heroIds: string[]) => {
+    const expedition = expeditions.find(e => e.id === expeditionId);
+    if (!expedition) return;
+
+    soundFx.playBuild();
+    const durationMs = expedition.durationSec * 1000;
+    const startTime = Date.now();
+    const endTime = startTime + durationMs;
+
+    setExpeditions(prev => prev.map(e => e.id === expeditionId ? {
+      ...e,
+      status: 'in_progress',
+      assignedHeroIds: heroIds,
+      startTime,
+      endTime,
+    } : e));
+
+    setHeroes(prev => prev.map(h => heroIds.includes(h.id) ? { ...h, status: 'on_expedition' } : h));
+
+    addLog(`Quinjet launched for ${expedition.name} with ${heroIds.length} heroes aboard!`, 'info');
+  };
+
+  // Claim Expedition Spoils
+  const handleClaimExpedition = (expeditionId: string) => {
+    const expedition = expeditions.find(e => e.id === expeditionId);
+    if (!expedition) return;
+
+    const scrapLoot = Math.floor(expedition.potentialLoot.minScrap + Math.random() * (expedition.potentialLoot.maxScrap - expedition.potentialLoot.minScrap));
+    const creditLoot = Math.floor(expedition.potentialLoot.minVibranium + Math.random() * (expedition.potentialLoot.maxVibranium - expedition.potentialLoot.minVibranium));
+
+    soundFx.playSuccess();
+
+    setResources(prev => ({
+      ...prev,
+      scrap: Math.min(prev.maxScrap, prev.scrap + scrapLoot),
+      vibraniumCredits: prev.vibraniumCredits + creditLoot,
+      morale: Math.min(100, prev.morale + 15),
+    }));
+
+    // Free heroes
+    setHeroes(prev => prev.map(h => {
+      if (expedition.assignedHeroIds.includes(h.id)) {
+        return {
+          ...h,
+          status: h.assignedBuildingId ? 'assigned' : 'idle',
+        };
+      }
+      return h;
+    }));
+
+    // Reset expedition
+    setExpeditions(prev => prev.map(e => e.id === expeditionId ? {
+      ...e,
+      status: 'available',
+      assignedHeroIds: [],
+      startTime: undefined,
+      endTime: undefined,
+    } : e));
+
+    addLog(`Expedition claims verified: Recovered +${scrapLoot} Scrap and +${creditLoot} Vibranium Units!`, 'success');
+  };
+
+  // Research Tech
+  const handleResearchTech = (techId: string) => {
+    const tech = techTree.find(t => t.id === techId);
+    if (!tech || tech.researched) return;
+
+    if (resources.scrap < tech.cost.scrap || resources.vibraniumCredits < tech.cost.vibraniumCredits) {
+      addLog('Insufficient resources to synthesize tech.', 'warning');
+      return;
+    }
+
+    setResources(prev => ({
+      ...prev,
+      scrap: prev.scrap - tech.cost.scrap,
+      vibraniumCredits: prev.vibraniumCredits - tech.cost.vibraniumCredits,
+    }));
+
+    setTechTree(prev => prev.map(t => t.id === techId ? { ...t, researched: true } : t));
+
+    soundFx.playSuccess();
+    addLog(`Breakthrough synthesized: ${tech.name}! ${tech.effectDescription}`, 'success');
+  };
+
+  // Execute Trade at Barter Post
+  const handleExecuteTrade = (tradeType: string) => {
+    soundFx.playClick();
+    switch (tradeType) {
+      case 'sell_scrap':
+        if (resources.scrap < 100) return;
+        setResources(prev => ({
+          ...prev,
+          scrap: prev.scrap - 100,
+          vibraniumCredits: prev.vibraniumCredits + 25,
+        }));
+        addLog('Bartered 100 Scrap to Ravagers for +25 Vibranium Credits.', 'info');
+        break;
+
+      case 'buy_food':
+        if (resources.vibraniumCredits < 20) return;
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits - 20,
+          food: Math.min(prev.maxFood, prev.food + 80),
+        }));
+        addLog('Purchased emergency hydro-rations (+80 Food) from smugglers.', 'info');
+        break;
+
+      case 'recruit_scavengers':
+        if (resources.vibraniumCredits < 35 || resources.population + 3 > resources.maxPopulation) return;
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits - 35,
+          population: prev.population + 3,
+          morale: Math.min(100, prev.morale + 10),
+        }));
+        addLog('Ransomed 3 enslaved scavengers from gladiator slavers. Population expanded!', 'success');
+        break;
+
+      case 'buy_power':
+        if (resources.scrap < 80 || resources.vibraniumCredits < 15) return;
+        setResources(prev => ({
+          ...prev,
+          scrap: prev.scrap - 80,
+          vibraniumCredits: prev.vibraniumCredits - 15,
+          power: Math.min(prev.maxPower, prev.power + 250),
+        }));
+        addLog('Installed smuggled Sovereign Battery: +250 MW Arc Power.', 'success');
+        break;
+
+      case 'host_festival':
+        if (resources.vibraniumCredits < 25) return;
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits - 25,
+          morale: Math.min(100, prev.morale + 30),
+        }));
+        addLog('Peter Quill threw a massive cosmic rave festival! Morale boosted +30%.', 'success');
+        break;
+
+      case 'trade_tva_paperweight':
+        if (resources.scrap < 80 || resources.vibraniumCredits < 15) return;
+        setResources(prev => ({
+          ...prev,
+          scrap: prev.scrap - 80,
+          vibraniumCredits: prev.vibraniumCredits - 15,
+          power: Math.min(prev.maxPower, prev.power + 350),
+          morale: Math.min(100, prev.morale + 15),
+        }));
+        addLog('Acquired TVA "Paperweight" Infinity Stones: Injected +350 MW clean power & +15 Morale.', 'success');
+        break;
+
+      case 'trade_oxe_futures': {
+        if (resources.vibraniumCredits < 40) return;
+        const bonusMult = researchedTechIds.includes('oxe_hyper_monopoly') ? 1.35 : 1.0;
+        const scrapGain = Math.round(250 * bonusMult);
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits - 40,
+          scrap: Math.min(prev.maxScrap, prev.scrap + scrapGain),
+          morale: Math.min(100, prev.morale + 10),
+        }));
+        addLog(`Arbitraged OXE Conglomerate Futures Contract: +${scrapGain} refined Scrap delivered to silos.`, 'success');
+        break;
+      }
+
+      case 'trade_dodc_salvage':
+        if (resources.scrap < 60 || resources.vibraniumCredits < 20) return;
+        setResources(prev => ({
+          ...prev,
+          scrap: prev.scrap - 60,
+          vibraniumCredits: prev.vibraniumCredits - 20,
+          defenseRating: prev.defenseRating + 30,
+          oxygen: Math.min(100, prev.oxygen + 25),
+        }));
+        setBuildings(prev => prev.map(b => ({ ...b, health: Math.min(b.maxHealth, b.health + 50) })));
+        addLog('Requisitioned DODC hazardous ordnance: +30 Defense, decontaminated air (+25 O₂), and patched hull damage.', 'success');
+        break;
+    }
+  };
+
+  // Resolve Crisis Event Choice
+  const handleResolveCrisis = (actionKey: string) => {
+    if (!activeCrisis) return;
+    const option = activeCrisis.options.find(o => o.actionKey === actionKey);
+    if (!option) return;
+
+    // Deduct cost
+    if (option.cost) {
+      setResources(prev => ({
+        ...prev,
+        scrap: prev.scrap - (option.cost?.scrap || 0),
+        power: Math.max(0, prev.power - (option.cost?.power || 0)),
+        vibraniumCredits: prev.vibraniumCredits - (option.cost?.vibraniumCredits || 0),
+      }));
+    }
+
+    const isSuccess = Math.random() <= option.successChance;
+
+    if (isSuccess) {
+      soundFx.playSuccess();
+      addLog(`CRISIS RESOLVED: ${option.onSuccessReward}`, 'success');
+
+      // Specific crisis rewards
+      if (actionKey === 'mobius_appeal') {
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits + 150,
+          morale: Math.min(100, prev.morale + 30),
+        }));
+      } else if (actionKey === 'aiko_counter_audit') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 220),
+          vibraniumCredits: prev.vibraniumCredits + 90,
+          morale: Math.min(100, prev.morale + 15),
+        }));
+      } else if (actionKey === 'stark_hack_oxe') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 180),
+        }));
+      } else if (actionKey === 'cleary_containment') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 240),
+          power: Math.min(prev.maxPower, prev.power + 60),
+          defenseRating: prev.defenseRating + 10,
+        }));
+      } else if (actionKey === 'rocket_hotwire_core') {
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 300),
+        }));
+      } else if (actionKey === 'yelena_counter_ambush') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 220),
+          vibraniumCredits: prev.vibraniumCredits + 80,
+          morale: Math.min(100, prev.morale + 15),
+        }));
+      } else if (actionKey === 'bucky_command_breach') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 200),
+          defenseRating: prev.defenseRating + 35,
+        }));
+      } else if (actionKey === 'usagent_shield_clearance') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 190),
+          defenseRating: prev.defenseRating + 25,
+        }));
+      } else if (actionKey === 'spiderman_web_bridge') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 240),
+          morale: Math.min(100, prev.morale + 25),
+        }));
+      } else if (actionKey === 'shangchi_earth_strike') {
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 220),
+          scrap: Math.min(prev.maxScrap, prev.scrap + 180),
+        }));
+      } else if (actionKey === 'wonderman_ionic_lift') {
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 150),
+          morale: Math.min(100, prev.morale + 35),
+        }));
+      } else if (actionKey === 'daredevil_sonar_guide') {
+        setResources(prev => ({
+          ...prev,
+          defenseRating: prev.defenseRating + 30,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 120),
+        }));
+      }
+    } else {
+      soundFx.playAlarm();
+      addLog(`TACTICAL SETBACK: ${option.onFailureConsequence}`, 'danger');
+
+      if (actionKey === 'stark_hack_oxe') {
+        setResources(prev => ({ ...prev, power: Math.max(0, prev.power - 40) }));
+      } else if (actionKey === 'strange_tva_bluff') {
+        setResources(prev => ({ ...prev, scrap: Math.max(0, prev.scrap - 40) }));
+      } else if (actionKey === 'concrete_encasement') {
+        setResources(prev => ({ ...prev, morale: Math.max(5, prev.morale - 20) }));
+      } else if (actionKey === 'yelena_counter_ambush') {
+        setResources(prev => ({ ...prev, scrap: Math.max(0, prev.scrap - 20) }));
+      } else if (actionKey === 'spiderman_web_bridge') {
+        setResources(prev => ({ ...prev, scrap: Math.max(0, prev.scrap - 25) }));
+      } else if (actionKey === 'emp_flare_flush') {
+        setResources(prev => ({ ...prev, power: Math.max(0, prev.power - 60) }));
+      }
+    }
+
+    setActiveCrisis(null);
+  };
+
+  // Reset Colony
+  const handleResetColony = () => {
+    if (window.confirm('Restart colony from Sol Cycle 1? All current progress will be reset.')) {
+      const fresh = createInitialGrid();
+      setTiles(fresh.tiles);
+      setBuildings(fresh.buildings);
+      setResources({
+        power: 120,
+        maxPower: 400,
+        scrap: 220,
+        maxScrap: 600,
+        food: 100,
+        maxFood: 350,
+        oxygen: 92,
+        vibraniumCredits: 45,
+        population: 14,
+        maxPopulation: 25,
+        assignedWorkers: 7,
+        morale: 85,
+        defenseRating: 30,
+      });
+      setHeroes(INITIAL_HEROES.map((h) => {
+        if (h.id === 'iron_man') return { ...h, assignedBuildingId: 'b_arc_initial', status: 'assigned' };
+        if (h.id === 'rocket') return { ...h, assignedBuildingId: 'b_scrap_initial', status: 'assigned' };
+        if (h.id === 'hulk') return { ...h, assignedBuildingId: 'b_bio_initial', status: 'assigned' };
+        return h;
+      }));
+      setTechTree(INITIAL_TECH_TREE);
+      setExpeditions(INITIAL_EXPEDITIONS);
+      setCycle(1);
+      setActiveCrisis(null);
+      addLog('Colony reset to Cycle 1. Standard emergency protocols active.', 'info');
+      soundFx.playBuild();
+    }
+  };
+
+  const selectedBuilding = buildings.find(b => b.id === selectedBuildingId) || null;
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans sakaar-dust selection:bg-cyan-500 selection:text-slate-950">
+      {/* Top HUD Bar */}
+      <HeaderHud
+        resources={resources}
+        rates={rates}
+        cycle={cycle}
+        gameSpeed={gameSpeed}
+        isMuted={isMuted}
+        activeCrisis={activeCrisis !== null}
+        onSetSpeed={setGameSpeed}
+        onToggleMute={() => {
+          const muted = soundFx.toggleMute();
+          setIsMuted(muted);
+        }}
+        onOpenLog={() => setIsLogDrawerOpen(true)}
+        onOpenGuide={() => setIsGuideOpen(true)}
+        onResetColony={handleResetColony}
+      />
+
+      {/* Main Operations Body */}
+      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 space-y-4">
+        {/* Navigation Tabs Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 p-2 rounded-2xl border border-slate-800 backdrop-blur-md">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('grid')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition ${
+                activeTab === 'grid'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              SURFACE SECTORS
+            </button>
+
+            <button
+              onClick={() => setActiveTab('expeditions')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition ${
+                activeTab === 'expeditions'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Compass className="w-4 h-4" />
+              EXPEDITIONS
+            </button>
+
+            <button
+              onClick={() => setActiveTab('tech')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition ${
+                activeTab === 'tech'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Cpu className="w-4 h-4" />
+              R&D LAB MATRIX
+            </button>
+
+            <button
+              onClick={() => setActiveTab('trade')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition ${
+                activeTab === 'trade'
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+              RAVAGER DEPOT
+            </button>
+          </div>
+
+          {/* Quick Roster Drawer Button */}
+          <button
+            onClick={() => setIsHeroDrawerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold font-mono-tech text-xs sm:text-sm shadow-md shadow-purple-500/20 transition"
+          >
+            <Users className="w-4 h-4" />
+            <span>HERO ROSTER ({heroes.filter(h => h.assignedBuildingId !== null).length}/{heroes.length})</span>
+          </button>
+        </div>
+
+        {/* Dynamic View Display */}
+        {activeTab === 'grid' && (
+          <ColonyGrid
+            tiles={tiles}
+            buildings={buildings}
+            heroes={heroes}
+            onSelectTile={(tile) => {
+              soundFx.playClick();
+              setSelectedTileForBuild(tile);
+            }}
+            onSelectBuilding={(b) => {
+              soundFx.playClick();
+              setSelectedBuildingId(b.id);
+            }}
+          />
+        )}
+
+        {activeTab === 'expeditions' && (
+          <ExpeditionsView
+            expeditions={expeditions}
+            heroes={heroes}
+            currentTime={currentTime}
+            onLaunchExpedition={handleLaunchExpedition}
+            onClaimExpedition={handleClaimExpedition}
+          />
+        )}
+
+        {activeTab === 'tech' && (
+          <TechLabView
+            techTree={techTree}
+            resources={resources}
+            onResearchTech={handleResearchTech}
+          />
+        )}
+
+        {activeTab === 'trade' && (
+          <TradeDepotView
+            resources={resources}
+            onExecuteTrade={handleExecuteTrade}
+          />
+        )}
+      </main>
+
+      {/* Hero Management Drawer */}
+      <HeroDrawer
+        isOpen={isHeroDrawerOpen}
+        onClose={() => setIsHeroDrawerOpen(false)}
+        heroes={heroes}
+        buildings={buildings}
+        onTriggerAbility={handleTriggerAbility}
+        onUnassignHero={handleUnassignHero}
+        currentTime={currentTime}
+      />
+
+      {/* Building Construction Palette Modal */}
+      <BuildingPaletteModal
+        isOpen={selectedTileForBuild !== null}
+        selectedTile={selectedTileForBuild}
+        resources={resources}
+        researchedTechIds={researchedTechIds}
+        onClose={() => setSelectedTileForBuild(null)}
+        onConstruct={handleConstructBuilding}
+      />
+
+      {/* Building Details & Upgrade Modal */}
+      <BuildingDetailsModal
+        isOpen={selectedBuilding !== null}
+        building={selectedBuilding}
+        resources={resources}
+        heroes={heroes}
+        researchedTechIds={researchedTechIds}
+        onClose={() => setSelectedBuildingId(null)}
+        onUpgrade={handleUpgradeBuilding}
+        onRepair={handleRepairBuilding}
+        onAssignHero={handleAssignHero}
+        onChangeWorkers={handleChangeWorkers}
+        onDemolish={handleDemolishBuilding}
+      />
+
+      {/* Crisis Event Modal */}
+      <CrisisModal
+        crisis={activeCrisis}
+        heroes={heroes}
+        resources={resources}
+        onResolveOption={handleResolveCrisis}
+      />
+
+      {/* Colony Log Drawer */}
+      <ColonyLogDrawer
+        isOpen={isLogDrawerOpen}
+        onClose={() => setIsLogDrawerOpen(false)}
+        logs={logs}
+      />
+
+      {/* Survival Operations Guide */}
+      <GuideModal
+        isOpen={isGuideOpen}
+        onClose={() => setIsGuideOpen(false)}
+      />
+    </div>
+  );
+}
