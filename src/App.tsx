@@ -18,7 +18,9 @@ import {
   Shield,
   Layers,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Globe,
+  Film
 } from 'lucide-react';
 
 import { 
@@ -32,7 +34,10 @@ import {
   PlanetaryExpedition, 
   ResourceRates, 
   TechNode, 
-  TerrainType 
+  TerrainType,
+  MultiverseTimeline,
+  MultiverseDirective,
+  IncursionRiftAnomaly
 } from './types';
 
 import { INITIAL_HEROES } from './data/mcuHeroes';
@@ -40,6 +45,8 @@ import { BUILDING_DEFINITIONS } from './data/buildings';
 import { INITIAL_TECH_TREE } from './data/techTree';
 import { CRISIS_TEMPLATES } from './data/crises';
 import { INITIAL_EXPEDITIONS } from './data/expeditions';
+import { INITIAL_TIMELINES, INITIAL_DIRECTIVES, INITIAL_INCURSION_RIFTS } from './data/multiverse';
+import { enrichHeroWithUpgradeData, evolveHeroToTier2 } from './data/heroUpgrades';
 import { soundFx } from './utils/audio';
 
 import { HeaderHud } from './components/HeaderHud';
@@ -50,9 +57,11 @@ import { BuildingDetailsModal } from './components/BuildingDetailsModal';
 import { ExpeditionsView } from './components/ExpeditionsView';
 import { TechLabView } from './components/TechLabView';
 import { TradeDepotView } from './components/TradeDepotView';
+import { MultiverseNexusView } from './components/MultiverseNexusView';
 import { CrisisModal } from './components/CrisisModal';
 import { ColonyLogDrawer } from './components/ColonyLogDrawer';
 import { GuideModal } from './components/GuideModal';
+import { MCUIntelModal } from './components/MCUIntelModal';
 
 const SAVE_KEY = 'sakaar_outpost_colony_v1';
 
@@ -183,6 +192,9 @@ export default function App() {
     maxFood: 350,
     oxygen: 92,
     vibraniumCredits: 45,
+    chronoCores: 2,
+    multiverseInfluence: 85,
+    incursionThreat: 15,
     population: 14,
     maxPopulation: 25,
     assignedWorkers: 7,
@@ -193,7 +205,8 @@ export default function App() {
   const [tiles, setTiles] = useState<GridTile[]>(initialSetup.tiles);
   const [buildings, setBuildings] = useState<ColonyBuilding[]>(initialSetup.buildings);
   const [heroes, setHeroes] = useState<MCUHero[]>(() => {
-    return INITIAL_HEROES.map((h) => {
+    return INITIAL_HEROES.map((raw) => {
+      const h = enrichHeroWithUpgradeData(raw);
       if (h.id === 'iron_man') return { ...h, assignedBuildingId: 'b_arc_initial', status: 'assigned' };
       if (h.id === 'rocket') return { ...h, assignedBuildingId: 'b_scrap_initial', status: 'assigned' };
       if (h.id === 'hulk') return { ...h, assignedBuildingId: 'b_bio_initial', status: 'assigned' };
@@ -203,10 +216,13 @@ export default function App() {
 
   const [techTree, setTechTree] = useState<TechNode[]>(INITIAL_TECH_TREE);
   const [expeditions, setExpeditions] = useState<PlanetaryExpedition[]>(INITIAL_EXPEDITIONS);
+  const [timelines, setTimelines] = useState<MultiverseTimeline[]>(INITIAL_TIMELINES);
+  const [directives, setDirectives] = useState<MultiverseDirective[]>(INITIAL_DIRECTIVES);
+  const [incursionRifts, setIncursionRifts] = useState<IncursionRiftAnomaly[]>(INITIAL_INCURSION_RIFTS);
   const [cycle, setCycle] = useState<number>(1);
   const [gameSpeed, setGameSpeed] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'grid' | 'expeditions' | 'tech' | 'trade'>('grid');
+  const [activeTab, setActiveTab] = useState<'grid' | 'expeditions' | 'tech' | 'trade' | 'multiverse'>('grid');
 
   // Active Crisis
   const [activeCrisis, setActiveCrisis] = useState<ColonyCrisis | null>(null);
@@ -220,6 +236,8 @@ export default function App() {
   const [isHeroDrawerOpen, setIsHeroDrawerOpen] = useState<boolean>(false);
   const [isLogDrawerOpen, setIsLogDrawerOpen] = useState<boolean>(false);
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [isMCUIntelModalOpen, setIsMCUIntelModalOpen] = useState<boolean>(false);
+  const [mcuIntelQuery, setMcuIntelQuery] = useState<string>('Spider-Man Brand New Day');
   const [selectedTileForBuild, setSelectedTileForBuild] = useState<GridTile | null>(null);
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
 
@@ -958,6 +976,143 @@ export default function App() {
         }));
         addLog(`Kate Bishop fired a PYM TRICK ARROW SALVO! Shrunk giant spaceship engine blocks into compact salvage (+240 Scrap, +60 Power, +25 Credits).`, 'success');
         break;
+
+      case 'thanos_snap_rebalance': // Thanos
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 320),
+          scrap: Math.min(prev.maxScrap, prev.scrap + 250),
+          defenseRating: prev.defenseRating + 45,
+        }));
+        if (activeCrisis && (activeCrisis.threatType === 'raiders' || activeCrisis.threatType === 'quake')) {
+          setActiveCrisis(null);
+          addLog(`Thanos snapped with the Infinity Gauntlet: "I AM INEVITABLE!" Annihilated the hostile invaders (+320 Power, +250 Scrap, +45 Defense).`, 'success');
+        } else {
+          addLog(`Thanos snapped with the Infinity Gauntlet, brutally rebalancing cosmic energy (+320 Power, +250 Scrap, +45 Defense).`, 'success');
+        }
+        break;
+
+      case 'loki_mischief_illusion': // Loki
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 220),
+          vibraniumCredits: prev.vibraniumCredits + 90,
+          morale: Math.min(100, prev.morale + 20),
+        }));
+        if (activeCrisis) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 40 } : null);
+          addLog(`Loki deployed GREEN ILLUSION MIRAGES! Confused attackers and pilfered +90 Credits and +220 Scrap (+40s crisis delay).`, 'success');
+        } else {
+          addLog(`Loki deceived perimeter scavengers with shimmering jade illusions (+220 Scrap, +90 Credits, +20 Morale).`, 'success');
+        }
+        break;
+
+      case 'hela_necrosword_storm': // Hela
+        setResources(prev => ({
+          ...prev,
+          defenseRating: prev.defenseRating + 45,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 180),
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Hela unleashed NECROSWORD SKY TORRENT! Skewered every attacking raider skiff (+45 Defense, +180 Scrap).`, 'success');
+        } else {
+          addLog(`Hela conjured obsidian necrosword spires fortifying colony frontiers (+45 Defense, +180 Scrap).`, 'success');
+        }
+        break;
+
+      case 'ultron_drone_fabrication': // Ultron
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 280),
+          power: Math.min(prev.maxPower, prev.power + 50),
+          defenseRating: prev.defenseRating + 40,
+        }));
+        addLog(`Ultron engineered an AUTONOMOUS SENTRY SWARM! Assimilated scrap mountains into +280 Scrap, +50 Power, and +40 Defense.`, 'success');
+        break;
+
+      case 'killmonger_kinetic_burst': // Killmonger
+        setResources(prev => ({
+          ...prev,
+          vibraniumCredits: prev.vibraniumCredits + 150,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 160),
+          defenseRating: prev.defenseRating + 25,
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Killmonger detonated GOLD JAGUAR KINETIC BURST! Blasted through enemy ranks (+150 Credits, +160 Scrap).`, 'success');
+        } else {
+          addLog(`Killmonger discharged raw kinetic vibranium energy into the colony grid (+150 Credits, +160 Scrap, +25 Defense).`, 'success');
+        }
+        break;
+
+      case 'goblin_pumpkin_barrage': // Green Goblin
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 210),
+          power: Math.min(prev.maxPower, prev.power + 50),
+          defenseRating: prev.defenseRating + 25,
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Green Goblin cackled wildly and carpet-bombed raiders with PUMPKIN BOMBS! (+210 Scrap, +50 Power, +25 Defense).`, 'success');
+        } else {
+          addLog(`Green Goblin bombed outer ruins with pumpkin explosives (+210 Scrap, +50 Power, +25 Defense).`, 'success');
+        }
+        break;
+
+      case 'wenwu_ten_rings_strike': // Wenwu
+        setResources(prev => ({
+          ...prev,
+          power: Math.min(prev.maxPower, prev.power + 240),
+          defenseRating: prev.defenseRating + 35,
+          vibraniumCredits: prev.vibraniumCredits + 90,
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Wenwu unleashed the CONQUEROR'S TEN RINGS STRIKE! Pulverized opposing warbands (+240 Power, +35 Defense, +90 Credits).`, 'success');
+        } else {
+          addLog(`Wenwu exerted 1,000 years of iron will with the Ten Rings (+240 Power, +35 Defense, +90 Credits).`, 'success');
+        }
+        break;
+
+      case 'grandmaster_melt_sweepstakes': // Grandmaster
+        setResources(prev => ({
+          ...prev,
+          morale: Math.min(100, prev.morale + 50),
+          scrap: Math.min(prev.maxScrap, prev.scrap + 180),
+          vibraniumCredits: prev.vibraniumCredits + 100,
+        }));
+        addLog(`The Grandmaster used the MELT STICK and launched a Sakaaran Contest of Champions festival! (+50 Morale, +180 Scrap, +100 Credits).`, 'success');
+        break;
+
+      case 'gorr_shadow_snare': // Gorr
+        setResources(prev => ({
+          ...prev,
+          defenseRating: prev.defenseRating + 40,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 160),
+        }));
+        if (activeCrisis && activeCrisis.threatType === 'raiders') {
+          setActiveCrisis(null);
+          addLog(`Gorr summoned NECROSWORD SHADOW MONSTERS! Dragged invading forces into the dark void (+40 Defense, +160 Scrap).`, 'success');
+        } else {
+          addLog(`Gorr's shadow tendrils reinforced the colony perimeter (+40 Defense, +160 Scrap).`, 'success');
+        }
+        break;
+
+      case 'kang_temporal_stasis': // Kang
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 200),
+          power: Math.min(prev.maxPower, prev.power + 100),
+        }));
+        if (activeCrisis) {
+          setActiveCrisis(curr => curr ? { ...curr, timeLeftSec: curr.timeLeftSec + 50 } : null);
+          addLog(`Kang activated QUANTUM TIME-DILATION FIELD! Locked the sector in temporal stasis (+50s crisis window, +200 Scrap, +100 Power).`, 'success');
+        } else {
+          addLog(`Kang halted entropy around colony dynamos with future technology (+200 Scrap, +100 Power).`, 'success');
+        }
+        break;
     }
   };
 
@@ -991,6 +1146,7 @@ export default function App() {
 
     const scrapLoot = Math.floor(expedition.potentialLoot.minScrap + Math.random() * (expedition.potentialLoot.maxScrap - expedition.potentialLoot.minScrap));
     const creditLoot = Math.floor(expedition.potentialLoot.minVibranium + Math.random() * (expedition.potentialLoot.maxVibranium - expedition.potentialLoot.minVibranium));
+    const chronoCoresLoot = expedition.potentialLoot.chronoCores || 0;
 
     soundFx.playSuccess();
 
@@ -998,6 +1154,8 @@ export default function App() {
       ...prev,
       scrap: Math.min(prev.maxScrap, prev.scrap + scrapLoot),
       vibraniumCredits: prev.vibraniumCredits + creditLoot,
+      chronoCores: prev.chronoCores + chronoCoresLoot,
+      multiverseInfluence: prev.multiverseInfluence + (chronoCoresLoot > 0 ? chronoCoresLoot * 20 : 5),
       morale: Math.min(100, prev.morale + 15),
     }));
 
@@ -1021,7 +1179,10 @@ export default function App() {
       endTime: undefined,
     } : e));
 
-    addLog(`Expedition claims verified: Recovered +${scrapLoot} Scrap and +${creditLoot} Vibranium Units!`, 'success');
+    const lootMsg = chronoCoresLoot > 0
+      ? `Recovered +${scrapLoot} Scrap, +${creditLoot} Vibranium Units, and +${chronoCoresLoot} Chrono-Cores!`
+      : `Recovered +${scrapLoot} Scrap and +${creditLoot} Vibranium Units!`;
+    addLog(`Expedition claims verified: ${lootMsg}`, 'success');
   };
 
   // Research Tech
@@ -1029,7 +1190,12 @@ export default function App() {
     const tech = techTree.find(t => t.id === techId);
     if (!tech || tech.researched) return;
 
-    if (resources.scrap < tech.cost.scrap || resources.vibraniumCredits < tech.cost.vibraniumCredits) {
+    const chronoCoreCost = tech.cost.chronoCores || 0;
+    if (
+      resources.scrap < tech.cost.scrap || 
+      resources.vibraniumCredits < tech.cost.vibraniumCredits ||
+      resources.chronoCores < chronoCoreCost
+    ) {
       addLog('Insufficient resources to synthesize tech.', 'warning');
       return;
     }
@@ -1038,6 +1204,8 @@ export default function App() {
       ...prev,
       scrap: prev.scrap - tech.cost.scrap,
       vibraniumCredits: prev.vibraniumCredits - tech.cost.vibraniumCredits,
+      chronoCores: prev.chronoCores - chronoCoreCost,
+      multiverseInfluence: prev.multiverseInfluence + (tech.tier === 4 ? 45 : 15),
     }));
 
     setTechTree(prev => prev.map(t => t.id === techId ? { ...t, researched: true } : t));
@@ -1141,6 +1309,213 @@ export default function App() {
         addLog('Requisitioned DODC hazardous ordnance: +30 Defense, decontaminated air (+25 O₂), and patched hull damage.', 'success');
         break;
     }
+  };
+
+  // Multiverse Operations: Stabilize Branch Timeline
+  const handleStabilizeTimeline = (timelineId: string) => {
+    const timeline = timelines.find(t => t.id === timelineId);
+    if (!timeline) return;
+
+    if (
+      resources.power < timeline.stabilizeCost.power ||
+      resources.scrap < timeline.stabilizeCost.scrap ||
+      resources.vibraniumCredits < timeline.stabilizeCost.vibraniumCredits
+    ) {
+      soundFx.playAlarm();
+      addLog(`Insufficient resources to stabilize reality ${timeline.realityCode}.`, 'danger');
+      return;
+    }
+
+    soundFx.playSuccess();
+    setResources(prev => ({
+      ...prev,
+      power: prev.power - timeline.stabilizeCost.power,
+      scrap: prev.scrap - timeline.stabilizeCost.scrap,
+      vibraniumCredits: prev.vibraniumCredits - timeline.stabilizeCost.vibraniumCredits,
+      multiverseInfluence: prev.multiverseInfluence + 35,
+      incursionThreat: Math.max(0, prev.incursionThreat - 12),
+      morale: Math.min(100, prev.morale + 10),
+    }));
+
+    setTimelines(prev => prev.map(t => {
+      if (t.id === timelineId) {
+        return {
+          ...t,
+          stabilityPercent: Math.min(100, t.stabilityPercent + 20),
+          incursionRisk: Math.max(5, t.incursionRisk - 25),
+          status: 'stabilized',
+        };
+      }
+      return t;
+    }));
+
+    addLog(`TIMELINE HARMONIZED: ${timeline.realityCode} (${timeline.name}) temporal dampeners reinforced! Multiverse Influence +35, Incursion Risk decreased.`, 'success');
+  };
+
+  // Multiverse Operations: Siphon Multiversal Energy
+  const handleSiphonTimeline = (timelineId: string) => {
+    const timeline = timelines.find(t => t.id === timelineId);
+    if (!timeline) return;
+
+    soundFx.playSuccess();
+    setResources(prev => ({
+      ...prev,
+      chronoCores: prev.chronoCores + timeline.siphonReward.chronoCores,
+      vibraniumCredits: prev.vibraniumCredits + timeline.siphonReward.vibraniumCredits,
+      scrap: Math.min(prev.maxScrap, prev.scrap + timeline.siphonReward.scrap),
+      multiverseInfluence: prev.multiverseInfluence + 20,
+      incursionThreat: Math.min(100, prev.incursionThreat + 8),
+    }));
+
+    setTimelines(prev => prev.map(t => {
+      if (t.id === timelineId) {
+        return {
+          ...t,
+          incursionRisk: Math.min(100, t.incursionRisk + 12),
+          stabilityPercent: Math.max(10, t.stabilityPercent - 10),
+        };
+      }
+      return t;
+    }));
+
+    addLog(`COSMIC HARVEST: Siphoned multiversal leakage from ${timeline.realityCode}! Yielded +${timeline.siphonReward.chronoCores} Chrono-Cores, +${timeline.siphonReward.vibraniumCredits} Credits, +${timeline.siphonReward.scrap} Scrap.`, 'info');
+  };
+
+  // Multiverse Operations: Enact Cosmic Directive
+  const handleEnactDirective = (directiveId: string) => {
+    const directive = directives.find(d => d.id === directiveId);
+    if (!directive) return;
+
+    if (resources.multiverseInfluence < directive.influenceRequired) {
+      soundFx.playAlarm();
+      addLog(`Influence rating insufficient to authorize ${directive.name}.`, 'danger');
+      return;
+    }
+
+    if (
+      resources.chronoCores < directive.cost.chronoCores ||
+      resources.vibraniumCredits < directive.cost.vibraniumCredits ||
+      resources.power < directive.cost.power
+    ) {
+      soundFx.playAlarm();
+      addLog(`Insufficient cosmic reserves for ${directive.codename}.`, 'danger');
+      return;
+    }
+
+    soundFx.playSuccess();
+
+    setResources(prev => ({
+      ...prev,
+      chronoCores: prev.chronoCores - directive.cost.chronoCores,
+      vibraniumCredits: prev.vibraniumCredits - directive.cost.vibraniumCredits,
+      power: prev.power - directive.cost.power,
+      multiverseInfluence: prev.multiverseInfluence + 50,
+      morale: 100,
+      incursionThreat: Math.max(0, prev.incursionThreat - 30),
+      defenseRating: prev.defenseRating + 30,
+    }));
+
+    // Specific directive effects
+    if (directive.id === 'dir_yggdrasil_loom') {
+      // Reset all hero cooldowns
+      setHeroes(prev => prev.map(h => ({
+        ...h,
+        ability: { ...h.ability, lastUsedAt: 0 }
+      })));
+      setTimelines(prev => prev.map(t => ({
+        ...t,
+        stabilityPercent: Math.min(100, t.stabilityPercent + 25),
+        incursionRisk: Math.max(5, t.incursionRisk - 30),
+      })));
+    } else if (directive.id === 'dir_illuminati_sync') {
+      setResources(prev => ({
+        ...prev,
+        scrap: Math.min(prev.maxScrap, prev.scrap + 400),
+        defenseRating: prev.defenseRating + 40,
+      }));
+    } else if (directive.id === 'dir_battleworld_sovereign') {
+      setResources(prev => ({
+        ...prev,
+        scrap: prev.maxScrap,
+        power: prev.maxPower,
+        food: prev.maxFood,
+        vibraniumCredits: prev.vibraniumCredits + 250,
+      }));
+    }
+
+    setDirectives(prev => prev.map(d => d.id === directiveId ? {
+      ...d,
+      lastUsedAt: Date.now()
+    } : d));
+
+    addLog(`COSMIC MANDATE ENACTED: [${directive.codename}] ${directive.name}! "${directive.gravitasQuote}"`, 'success');
+  };
+
+  // Multiverse Operations: Seal Incursion Rift
+  const handleStabilizeRift = (riftId: string) => {
+    const rift = incursionRifts.find(r => r.id === riftId);
+    if (!rift) return;
+
+    if (
+      resources.power < rift.requiredChronoStabilizerCost.power ||
+      resources.scrap < rift.requiredChronoStabilizerCost.scrap ||
+      resources.chronoCores < (rift.requiredChronoStabilizerCost.chronoCores || 0)
+    ) {
+      soundFx.playAlarm();
+      addLog(`Insufficient energy or Chrono-Cores to seal incursion rift.`, 'danger');
+      return;
+    }
+
+    soundFx.playSuccess();
+
+    setResources(prev => ({
+      ...prev,
+      power: prev.power - rift.requiredChronoStabilizerCost.power,
+      scrap: prev.scrap - rift.requiredChronoStabilizerCost.scrap,
+      chronoCores: prev.chronoCores - (rift.requiredChronoStabilizerCost.chronoCores || 0) + rift.rewards.chronoCores,
+      multiverseInfluence: prev.multiverseInfluence + rift.rewards.multiverseInfluence,
+      incursionThreat: Math.max(0, prev.incursionThreat - 20),
+      morale: Math.min(100, prev.morale + 15),
+    }));
+
+    setIncursionRifts(prev => prev.filter(r => r.id !== riftId));
+
+    addLog(`INCURSION RIFT SEALED: Closed tear with ${rift.realityCode}! Harvested +${rift.rewards.chronoCores} Chrono-Cores and +${rift.rewards.multiverseInfluence} Multiverse Influence.`, 'success');
+  };
+
+  // Hero Apex Ascension to Tier 2
+  const handleUpgradeHero = (heroId: string) => {
+    const hero = heroes.find(h => h.id === heroId);
+    if (!hero || hero.tier === 2) return;
+
+    const cost = hero.upgradeCost || { scrap: 300, vibraniumCredits: 50, chronoCores: 2 };
+
+    if (
+      resources.scrap < cost.scrap ||
+      resources.vibraniumCredits < cost.vibraniumCredits ||
+      resources.chronoCores < cost.chronoCores
+    ) {
+      soundFx.playAlarm();
+      addLog(`Insufficient resources to ascend ${hero.heroName} to Multiverse Apex form.`, 'danger');
+      return;
+    }
+
+    soundFx.playSuccess();
+
+    setResources(prev => ({
+      ...prev,
+      scrap: prev.scrap - cost.scrap,
+      vibraniumCredits: prev.vibraniumCredits - cost.vibraniumCredits,
+      chronoCores: prev.chronoCores - cost.chronoCores,
+      multiverseInfluence: prev.multiverseInfluence + 55,
+      morale: Math.min(100, prev.morale + 20),
+    }));
+
+    const ascendedHero = evolveHeroToTier2(hero);
+
+    setHeroes(prev => prev.map(h => h.id === heroId ? ascendedHero : h));
+
+    addLog(`APEX ASCENSION: ${hero.name} has evolved into ${ascendedHero.heroName}! "${ascendedHero.quote}" (+25 Stats, +55 Multiverse Influence, empowered ability).`, 'success');
   };
 
   // Resolve Crisis Event Choice
@@ -1372,16 +1747,45 @@ export default function App() {
               <ArrowLeftRight className="w-4 h-4" />
               RAVAGER DEPOT
             </button>
+
+            <button
+              id="multiverse-nexus-tab-btn"
+              onClick={() => setActiveTab('multiverse')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition ${
+                activeTab === 'multiverse'
+                  ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 text-white shadow-md shadow-purple-500/25'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Globe className="w-4 h-4 text-purple-300 animate-spin-slow" />
+              MULTIVERSE NEXUS
+            </button>
           </div>
 
-          {/* Quick Roster Drawer Button */}
-          <button
-            onClick={() => setIsHeroDrawerOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold font-mono-tech text-xs sm:text-sm shadow-md shadow-purple-500/20 transition"
-          >
-            <Users className="w-4 h-4" />
-            <span>HERO ROSTER ({heroes.filter(h => h.assignedBuildingId !== null).length}/{heroes.length})</span>
-          </button>
+          {/* Action Buttons: Live Intel & Hero Roster */}
+          <div className="flex items-center gap-2">
+            <button
+              id="open-mcu-intel-nav-btn"
+              onClick={() => {
+                setMcuIntelQuery('Spider-Man Brand New Day');
+                setIsMCUIntelModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-bold font-mono-tech text-xs sm:text-sm shadow-md shadow-amber-500/20 transition"
+              title="Query Live MCU Movie Intel with Google Search grounding"
+            >
+              <Globe className="w-4 h-4 animate-pulse" />
+              <span>LIVE MOVIE INTEL</span>
+            </button>
+
+            <button
+              id="open-hero-roster-nav-btn"
+              onClick={() => setIsHeroDrawerOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold font-mono-tech text-xs sm:text-sm shadow-md shadow-purple-500/20 transition"
+            >
+              <Users className="w-4 h-4" />
+              <span>CANON ROSTER ({heroes.filter(h => h.assignedBuildingId !== null).length}/{heroes.length})</span>
+            </button>
+          </div>
         </div>
 
         {/* Dynamic View Display */}
@@ -1425,6 +1829,21 @@ export default function App() {
             onExecuteTrade={handleExecuteTrade}
           />
         )}
+
+        {activeTab === 'multiverse' && (
+          <MultiverseNexusView
+            resources={resources}
+            timelines={timelines}
+            directives={directives}
+            incursionRifts={incursionRifts}
+            heroes={heroes}
+            onStabilizeTimeline={handleStabilizeTimeline}
+            onSiphonTimeline={handleSiphonTimeline}
+            onEnactDirective={handleEnactDirective}
+            onStabilizeRift={handleStabilizeRift}
+            onUpgradeHero={handleUpgradeHero}
+          />
+        )}
       </main>
 
       {/* Hero Management Drawer */}
@@ -1433,9 +1852,22 @@ export default function App() {
         onClose={() => setIsHeroDrawerOpen(false)}
         heroes={heroes}
         buildings={buildings}
+        resources={resources}
         onTriggerAbility={handleTriggerAbility}
         onUnassignHero={handleUnassignHero}
+        onUpgradeHero={handleUpgradeHero}
         currentTime={currentTime}
+        onOpenMCUIntel={(query) => {
+          setMcuIntelQuery(query);
+          setIsMCUIntelModalOpen(true);
+        }}
+      />
+
+      {/* Live MCU Movie Search Grounding Intel Modal */}
+      <MCUIntelModal
+        isOpen={isMCUIntelModalOpen}
+        onClose={() => setIsMCUIntelModalOpen(false)}
+        initialQuery={mcuIntelQuery}
       />
 
       {/* Building Construction Palette Modal */}

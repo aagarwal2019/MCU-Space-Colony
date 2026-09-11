@@ -1,9 +1,11 @@
 export type HeroRole = 'engineering' | 'science' | 'combat' | 'logistics' | 'mystic' | 'command';
+export type CharacterType = 'hero' | 'villain' | 'antihero';
 
 export interface MCUHero {
   id: string;
   name: string;
   heroName: string;
+  characterType: CharacterType;
   role: HeroRole;
   title: string;
   avatarColor: string;
@@ -20,6 +22,25 @@ export interface MCUHero {
   buildingAffinity: string; // building type it boosts best
   affinityDescription: string;
   passiveBonus: string;
+  movieOrigin: string;
+  movieAppearances: string[];
+  tier?: 1 | 2;
+  upgradeCost?: {
+    scrap: number;
+    vibraniumCredits: number;
+    chronoCores: number;
+  };
+  upgradedForm?: {
+    heroName: string;
+    title: string;
+    lore: string;
+    quote: string;
+    passiveBonus: string;
+    abilityName: string;
+    abilityDesc: string;
+    abilityCooldownSec: number;
+    statBoost: number;
+  };
   ability: {
     name: string;
     description: string;
@@ -48,10 +69,34 @@ export interface MCUHero {
       | 'red_guardian_brawl'
       | 'captain_america_rally'
       | 'radar_sense_alert'
-      | 'trick_arrow_salvo';
+      | 'trick_arrow_salvo'
+      | 'thanos_snap_rebalance'
+      | 'loki_mischief_illusion'
+      | 'hela_necrosword_storm'
+      | 'ultron_drone_fabrication'
+      | 'killmonger_kinetic_burst'
+      | 'goblin_pumpkin_barrage'
+      | 'wenwu_ten_rings_strike'
+      | 'grandmaster_melt_sweepstakes'
+      | 'gorr_shadow_snare'
+      | 'kang_temporal_stasis';
   };
   quote: string;
   lore: string;
+}
+
+export interface GroundingWebChunk {
+  web?: {
+    uri: string;
+    title: string;
+  };
+}
+
+export interface MCUSearchIntelResponse {
+  query: string;
+  analysis: string;
+  sources: { uri: string; title: string }[];
+  timestamp: number;
 }
 
 export type BuildingType = 
@@ -133,6 +178,9 @@ export interface ColonyResources {
   maxFood: number;
   oxygen: number; // 0 to 100%
   vibraniumCredits: number;
+  chronoCores: number; // Sub-atomic / temporal multiversal catalyst
+  multiverseInfluence: number; // 0 to 1000+ points across realities
+  incursionThreat: number; // 0 to 100% Incursion danger
   population: number;
   maxPopulation: number;
   assignedWorkers: number;
@@ -155,7 +203,7 @@ export interface ResourceRates {
 export interface TechNode {
   id: string;
   name: string;
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
   developer: 
     | 'Stark Industries' 
     | 'Wakandan Design Group' 
@@ -163,10 +211,13 @@ export interface TechNode {
     | 'Kamar-Taj Archive'
     | 'Time Variance Authority'
     | 'OXE Group'
-    | 'Damage Control';
+    | 'Damage Control'
+    | 'Multiverse Illuminati'
+    | 'Yggdrasil Loom';
   cost: {
     scrap: number;
     vibraniumCredits: number;
+    chronoCores?: number;
   };
   researched: boolean;
   description: string;
@@ -213,6 +264,7 @@ export interface PlanetaryExpedition {
     minVibranium: number;
     maxVibranium: number;
     rareArtifactChance: number;
+    chronoCores?: number;
   };
   recommendedRoles: HeroRole[];
 }
@@ -223,4 +275,65 @@ export interface GameLogEntry {
   cycle: number;
   type: 'info' | 'success' | 'warning' | 'danger' | 'crisis';
   message: string;
+}
+
+export interface MultiverseTimeline {
+  id: string;
+  name: string;
+  realityCode: string; // e.g. 'Earth-616', 'Earth-838', 'The Void', 'Quantum Realm', 'Battleworld'
+  status: 'harmonized' | 'incursion_warning' | 'fractured' | 'stabilized';
+  stabilityPercent: number; // 0 to 100%
+  incursionRisk: number; // 0 to 100%
+  description: string;
+  lore: string;
+  activePerk: string;
+  stabilizeCost: {
+    power: number;
+    scrap: number;
+    vibraniumCredits: number;
+  };
+  siphonReward: {
+    chronoCores: number;
+    vibraniumCredits: number;
+    scrap: number;
+  };
+  lastStabilizedAt: number;
+}
+
+export interface MultiverseDirective {
+  id: string;
+  name: string;
+  codename: string;
+  influenceRequired: number;
+  description: string;
+  gravitasQuote: string;
+  cost: {
+    chronoCores: number;
+    vibraniumCredits: number;
+    power: number;
+  };
+  cooldownSec: number;
+  lastUsedAt: number;
+  effectType: 'loom_weave' | 'quantum_repulsor' | 'illuminati_protocol' | 'alioth_purge' | 'battleworld_anchor';
+}
+
+export interface IncursionRiftAnomaly {
+  id: string;
+  title: string;
+  realityCode: string;
+  severity: 'moderate' | 'catastrophic' | 'cosmic_nexus';
+  description: string;
+  stabilityWindowSec: number;
+  maxWindowSec: number;
+  recommendedHeroRole: HeroRole;
+  requiredChronoStabilizerCost: {
+    power: number;
+    chronoCores?: number;
+    scrap: number;
+  };
+  rewards: {
+    chronoCores: number;
+    multiverseInfluence: number;
+    vibraniumCredits: number;
+  };
 }

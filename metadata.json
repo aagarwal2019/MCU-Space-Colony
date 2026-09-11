@@ -1,6 +1,6 @@
 {
   "name": "Sakaar Outpost: MCU Space Colony",
-  "description": "Build and manage a thriving space colony on the dystopian scrap world of Sakaar with Marvel Cinematic Universe heroes, crisis management, expeditions, and sector engineering.",
+  "description": "Build and manage a thriving space colony on the dystopian scrap world of Sakaar with Marvel Cinematic Universe heroes, iconic villains, movie canon dossiers, live search-grounded intel, and sector management.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

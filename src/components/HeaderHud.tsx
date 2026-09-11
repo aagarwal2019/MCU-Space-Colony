@@ -15,7 +15,9 @@ import {
   RotateCcw,
   BookOpen,
   ScrollText,
-  AlertTriangle
+  AlertTriangle,
+  Clock,
+  Globe
 } from 'lucide-react';
 import { ColonyResources, ResourceRates } from '../types';
 
@@ -268,7 +270,7 @@ export const HeaderHud: React.FC<HeaderHudProps> = ({
           </div>
 
           {/* Defense Rating */}
-          <div className="flex flex-col px-1.5 py-0.5" title={`Defense Rating: ${resources.defenseRating}. Protects against raiders & storms.`}>
+          <div className="flex flex-col px-1.5 py-0.5 border-r border-slate-800/60" title={`Defense Rating: ${resources.defenseRating}. Protects against raiders & storms.`}>
             <div className="flex items-center gap-1 text-slate-400">
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
               <span className="font-mono-tech">DEFENSE</span>
@@ -278,6 +280,36 @@ export const HeaderHud: React.FC<HeaderHudProps> = ({
                 {resources.defenseRating}
               </span>
               <span className="text-[10px] text-slate-400 font-mono-tech">pts</span>
+            </div>
+          </div>
+
+          {/* Chrono-Cores */}
+          <div className="flex flex-col px-1.5 py-0.5 border-r border-slate-800/60" title={`Chrono-Cores: ${resources.chronoCores}. Premium multiversal energy harvested from alternate realities.`}>
+            <div className="flex items-center gap-1 text-cyan-400">
+              <Clock className="w-3.5 h-3.5" />
+              <span className="font-mono-tech text-slate-400">CORES</span>
+            </div>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className="font-mono-tech font-bold text-cyan-300">
+                {resources.chronoCores}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono-tech">tva</span>
+            </div>
+          </div>
+
+          {/* Multiverse Incursion Threat */}
+          <div className="flex flex-col px-1.5 py-0.5" title={`Multiverse Incursion Threat: ${Math.round(resources.incursionThreat)}%. Higher risk triggers multiversal anomalies and dimensional crises.`}>
+            <div className="flex items-center gap-1 text-slate-400">
+              <Globe className="w-3.5 h-3.5 text-purple-400" />
+              <span className="font-mono-tech">INCURSION</span>
+            </div>
+            <div className="flex items-baseline gap-1 mt-0.5">
+              <span className={`font-mono-tech font-bold ${
+                resources.incursionThreat >= 60 ? 'text-rose-500 animate-pulse' : resources.incursionThreat >= 35 ? 'text-amber-400' : 'text-purple-300'
+              }`}>
+                {Math.round(resources.incursionThreat)}%
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono-tech">risk</span>
             </div>
           </div>
         </div>

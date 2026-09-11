@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { 
   Users, 
   X, 
@@ -22,9 +22,17 @@ import {
   Award,
   Eye,
   Crosshair,
-  Search
+  Search,
+  Film,
+  Globe,
+  Skull,
+  ShieldAlert,
+  Crown,
+  Bomb,
+  Flame,
+  Hourglass
 } from 'lucide-react';
-import { MCUHero, ColonyBuilding } from '../types';
+import { MCUHero, ColonyBuilding, ColonyResources } from '../types';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 
 interface HeroDrawerProps {
@@ -35,6 +43,9 @@ interface HeroDrawerProps {
   onTriggerAbility: (heroId: string) => void;
   onUnassignHero: (heroId: string) => void;
   currentTime: number;
+  onOpenMCUIntel?: (query: string) => void;
+  resources?: ColonyResources;
+  onUpgradeHero?: (heroId: string) => void;
 }
 
 export const HeroDrawer: React.FC<HeroDrawerProps> = ({
@@ -45,9 +56,13 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
   onTriggerAbility,
   onUnassignHero,
   currentTime,
+  onOpenMCUIntel,
+  resources,
+  onUpgradeHero,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
+  const [selectedType, setSelectedType] = useState<string>('all');
 
   if (!isOpen) return null;
 
@@ -71,6 +86,12 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
       case 'Award': return <Award className="w-4 h-4" />;
       case 'Eye': return <Eye className="w-4 h-4" />;
       case 'Crosshair': return <Crosshair className="w-4 h-4" />;
+      case 'ShieldAlert': return <ShieldAlert className="w-4 h-4" />;
+      case 'Crown': return <Crown className="w-4 h-4" />;
+      case 'Bomb': return <Bomb className="w-4 h-4" />;
+      case 'Flame': return <Flame className="w-4 h-4" />;
+      case 'Hourglass': return <Hourglass className="w-4 h-4" />;
+      case 'Skull': return <Skull className="w-4 h-4" />;
       default: return <Users className="w-4 h-4" />;
     }
   };
@@ -83,47 +104,72 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
   };
 
   const filteredHeroes = heroes.filter(hero => {
+    const queryLower = searchQuery.toLowerCase();
     const matchesSearch = 
-      hero.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      hero.heroName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      hero.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      hero.lore.toLowerCase().includes(searchQuery.toLowerCase());
+      hero.name.toLowerCase().includes(queryLower) ||
+      hero.heroName.toLowerCase().includes(queryLower) ||
+      hero.title.toLowerCase().includes(queryLower) ||
+      hero.lore.toLowerCase().includes(queryLower) ||
+      (hero.movieOrigin && hero.movieOrigin.toLowerCase().includes(queryLower)) ||
+      (hero.movieAppearances && hero.movieAppearances.some(m => m.toLowerCase().includes(queryLower)));
+    
     const matchesRole = selectedRole === 'all' || hero.role === selectedRole;
-    return matchesSearch && matchesRole;
+    const matchesType = selectedType === 'all' || hero.characterType === selectedType;
+
+    return matchesSearch && matchesRole && matchesType;
   });
 
+  const heroCount = heroes.filter(h => h.characterType === 'hero').length;
+  const villainCount = heroes.filter(h => h.characterType === 'villain').length;
+  const antiheroCount = heroes.filter(h => h.characterType === 'antihero').length;
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
+    <div id="mcu-hero-drawer-overlay" className="fixed inset-0 z-50 flex justify-end bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
       <div 
+        id="mcu-hero-drawer-panel"
         className="w-full max-w-2xl h-full bg-slate-900/95 border-l border-cyan-500/30 flex flex-col shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-purple-600 flex items-center justify-center text-white shadow-lg">
-              <Users className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 via-amber-600 to-red-600 flex items-center justify-center text-white shadow-lg">
+              <Film className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-bold tracking-wider text-slate-100 font-display">
-                  MCU HEROES & ALLIES ROSTER
+                  MCU MOVIE CANON ROSTER
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-500/30 text-xs font-mono-tech font-bold">
-                  {heroes.length} HEROES
+                  {heroes.length} CHARACTERS
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-mono-tech">
-                Avengers, Thunderbolts*, TVA, and street-level defenders standing ready.
+                Canon Heroes, Movie Villains, and Antiheroes based on the Marvel Cinematic Universe
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenMCUIntel && (
+              <button
+                id="open-live-intel-header-btn"
+                onClick={() => onOpenMCUIntel('Marvel Cinematic Universe')}
+                className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-mono-tech font-bold flex items-center gap-1.5 transition"
+                title="Search Live MCU Movie Intel with Google Search Grounding"
+              >
+                <Globe className="w-3.5 h-3.5 animate-pulse" />
+                <span className="hidden sm:inline">LIVE INTEL</span>
+              </button>
+            )}
+            <button
+              id="close-hero-drawer-btn"
+              onClick={onClose}
+              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Filter & Search Bar */}
@@ -131,17 +177,42 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
+              id="hero-roster-search-input"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by hero name, alias, role, or title (e.g. Spider-Man, Thunderbolts, Bucky)..."
+              placeholder="Search by name, film appearance, movie origin, quote, or role..."
               className="w-full pl-9 pr-3 py-1.5 bg-slate-900 rounded-lg border border-slate-700 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400"
             />
           </div>
 
+          {/* Character Type Tabs */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono-tech border-b border-slate-800/50 pb-2">
+            {[
+              { id: 'all', label: `ALL (${heroes.length})` },
+              { id: 'hero', label: `HEROES (${heroCount})`, color: 'text-cyan-400' },
+              { id: 'villain', label: `VILLAINS (${villainCount})`, color: 'text-rose-400' },
+              { id: 'antihero', label: `ANTIHEROES (${antiheroCount})`, color: 'text-amber-400' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSelectedType(tab.id)}
+                className={`px-3 py-1 rounded-md text-[11px] font-bold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  selectedType === tab.id
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-slate-950 shadow'
+                    : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                {tab.id === 'villain' && <Skull className="w-3 h-3" />}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Role Filter Tabs */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono-tech">
             {[
-              { id: 'all', label: 'ALL HEROES' },
+              { id: 'all', label: 'ANY ROLE' },
               { id: 'combat', label: 'COMBAT' },
               { id: 'command', label: 'COMMAND' },
               { id: 'engineering', label: 'ENGINEERING' },
@@ -152,7 +223,7 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setSelectedRole(tab.id)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold whitespace-nowrap transition ${
+                className={`px-2.5 py-1 rounded-md text-[10px] font-bold whitespace-nowrap transition ${
                   selectedRole === tab.id
                     ? 'bg-cyan-500 text-slate-950 shadow'
                     : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
@@ -168,18 +239,27 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
           {filteredHeroes.length === 0 ? (
             <div className="p-8 text-center text-slate-500 font-mono-tech text-xs">
-              No MCU heroes match your search or filter criteria.
+              No MCU characters match your search or filter criteria.
             </div>
           ) : filteredHeroes.map((hero) => {
             const timeSinceUse = (currentTime - hero.ability.lastUsedAt) / 1000;
             const cooldownRemaining = Math.max(0, Math.ceil(hero.ability.cooldownSec - timeSinceUse));
             const isAbilityReady = cooldownRemaining === 0;
             const assignedBuildingName = getAssignedBuildingName(hero.assignedBuildingId);
+            const isVillain = hero.characterType === 'villain';
+            const isAntihero = hero.characterType === 'antihero';
 
             return (
               <div
                 key={hero.id}
-                className="bg-slate-950/80 border border-slate-800 hover:border-cyan-500/40 rounded-xl p-4 transition-all shadow-md group relative overflow-hidden"
+                id={`hero-card-${hero.id}`}
+                className={`border rounded-xl p-4 transition-all shadow-md group relative overflow-hidden ${
+                  isVillain 
+                    ? 'bg-slate-950/90 border-rose-900/60 hover:border-rose-500/60' 
+                    : isAntihero
+                    ? 'bg-slate-950/85 border-amber-900/60 hover:border-amber-500/60'
+                    : 'bg-slate-950/80 border-slate-800 hover:border-cyan-500/40'
+                }`}
               >
                 {/* Accent Top Bar */}
                 <div 
@@ -198,21 +278,41 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                       </div>
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-base font-bold text-slate-100 font-display">
                           {hero.heroName}
                         </h3>
-                        <span className="text-xs text-slate-400">({hero.name})</span>
+                        <span className="text-xs text-slate-400 font-medium">({hero.name})</span>
+                        
+                        {/* Character Type Badge */}
+                        <span className={`text-[10px] uppercase px-2 py-0.5 rounded font-mono-tech font-bold border ${
+                          isVillain
+                            ? 'bg-rose-950/80 text-rose-300 border-rose-500/40'
+                            : isAntihero
+                            ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                            : 'bg-blue-950/80 text-blue-300 border-blue-500/40'
+                        }`}>
+                          {hero.characterType}
+                        </span>
+
                         <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono-tech border border-cyan-500/20">
                           {hero.role}
                         </span>
+
+                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-mono-tech font-bold border ${
+                          hero.tier === 2 
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm' 
+                            : 'bg-slate-900 text-slate-400 border-slate-700'
+                        }`}>
+                          {hero.tier === 2 ? 'TIER 2 APEX' : 'TIER 1 BASE'}
+                        </span>
                       </div>
-                      <p className="text-xs text-slate-400">{hero.title}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{hero.title}</p>
                     </div>
                   </div>
 
                   {/* Status Badge */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {hero.status === 'on_expedition' ? (
                       <span className="text-xs px-2.5 py-1 rounded-full bg-purple-950/80 text-purple-300 border border-purple-500/40 flex items-center gap-1 font-mono-tech">
                         <PlaneTakeoff className="w-3 h-3" /> ON AWAY MISSION
@@ -238,8 +338,35 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                   </div>
                 </div>
 
+                {/* Movie Canon Badges */}
+                <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1 text-[11px] text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded border border-amber-500/30">
+                      <Film className="w-3 h-3 text-amber-400" />
+                      <span className="font-semibold">MCU Origin:</span>
+                      <span>{hero.movieOrigin}</span>
+                    </div>
+                    {hero.movieAppearances && hero.movieAppearances.length > 0 && (
+                      <span className="text-[11px] text-slate-400 font-mono-tech">
+                        Films: {hero.movieAppearances.slice(0, 3).join(', ')}{hero.movieAppearances.length > 3 ? ` +${hero.movieAppearances.length - 3} more` : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {onOpenMCUIntel && (
+                    <button
+                      onClick={() => onOpenMCUIntel(`${hero.heroName} ${hero.name} MCU movie`)}
+                      className="text-[11px] px-2 py-1 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 rounded flex items-center gap-1 transition"
+                      title="Verify canon status & live movie intel with Google Search"
+                    >
+                      <Globe className="w-3 h-3 text-cyan-400" />
+                      <span>Live Movie Intel</span>
+                    </button>
+                  )}
+                </div>
+
                 {/* Affinity & Passive */}
-                <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800/50">
                     <span className="text-cyan-400 font-semibold font-mono-tech block">STATION AFFINITY:</span>
                     <span className="text-slate-300">{hero.affinityDescription}</span>
@@ -254,6 +381,43 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                 <p className="mt-2 text-xs italic text-slate-400 border-l-2 border-slate-700 pl-2">
                   "{hero.quote}"
                 </p>
+
+                {/* Multiverse Apex Ascension Status */}
+                {hero.tier === 1 && onUpgradeHero && resources && hero.upgradeCost && (
+                  <div className="mt-3 bg-gradient-to-r from-purple-950/40 to-slate-900/90 rounded-lg p-3 border border-purple-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <Award className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold text-amber-300 font-mono-tech uppercase">
+                          MULTIVERSE APEX ASCENSION
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        Cost: {hero.upgradeCost.scrap} Scrap, {hero.upgradeCost.vibraniumCredits} Credits, {hero.upgradeCost.chronoCores} Chrono-Cores (+25 to all stats)
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => onUpgradeHero(hero.id)}
+                      disabled={
+                        resources.scrap < hero.upgradeCost.scrap ||
+                        resources.vibraniumCredits < hero.upgradeCost.vibraniumCredits ||
+                        resources.chronoCores < hero.upgradeCost.chronoCores
+                      }
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold font-mono-tech bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-600 text-slate-950 disabled:cursor-not-allowed transition flex items-center justify-center gap-1 shrink-0 shadow"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>ASCEND TO APEX</span>
+                    </button>
+                  </div>
+                )}
+
+                {hero.tier === 2 && (
+                  <div className="mt-3 bg-gradient-to-r from-amber-950/30 to-purple-950/30 rounded-lg px-3 py-1.5 border border-amber-500/40 flex items-center gap-2 text-xs font-mono-tech text-amber-300">
+                    <Award className="w-4 h-4 text-amber-400" />
+                    <span>MULTIVERSE APEX FORM ACTIVE (+25 STATS & EMPOWERED PROTOCOL)</span>
+                  </div>
+                )}
 
                 {/* Signature Ability Action Bar */}
                 <div className="mt-3 bg-slate-900/90 rounded-lg p-3 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -273,7 +437,9 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                     onClick={() => onTriggerAbility(hero.id)}
                     className={`px-3 py-2 rounded-lg text-xs font-bold font-mono-tech flex items-center justify-center gap-1.5 shrink-0 transition shadow-md ${
                       isAbilityReady && hero.status !== 'on_expedition'
-                        ? 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-cyan-500/20'
+                        ? isVillain
+                          ? 'bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-rose-500/20'
+                          : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-cyan-500/20'
                         : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
                     }`}
                   >
