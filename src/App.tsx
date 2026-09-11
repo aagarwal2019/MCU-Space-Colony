@@ -20,7 +20,9 @@ import {
   Sparkles,
   RefreshCw,
   Globe,
-  Film
+  Film,
+  Clock,
+  Skull
 } from 'lucide-react';
 
 import { 
@@ -62,6 +64,7 @@ import { CrisisModal } from './components/CrisisModal';
 import { ColonyLogDrawer } from './components/ColonyLogDrawer';
 import { GuideModal } from './components/GuideModal';
 import { MCUIntelModal } from './components/MCUIntelModal';
+import { DoomsdayClockDashboard } from './components/DoomsdayClockDashboard';
 
 const SAVE_KEY = 'sakaar_outpost_colony_v1';
 
@@ -222,7 +225,7 @@ export default function App() {
   const [cycle, setCycle] = useState<number>(1);
   const [gameSpeed, setGameSpeed] = useState<number>(1);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'grid' | 'expeditions' | 'tech' | 'trade' | 'multiverse'>('grid');
+  const [activeTab, setActiveTab] = useState<'grid' | 'expeditions' | 'tech' | 'trade' | 'multiverse' | 'doomsday'>('grid');
 
   // Active Crisis
   const [activeCrisis, setActiveCrisis] = useState<ColonyCrisis | null>(null);
@@ -1760,6 +1763,22 @@ export default function App() {
               <Globe className="w-4 h-4 text-purple-300 animate-spin-slow" />
               MULTIVERSE NEXUS
             </button>
+
+            <button
+              id="doomsday-clock-tab-btn"
+              onClick={() => setActiveTab('doomsday')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition relative overflow-hidden ${
+                activeTab === 'doomsday'
+                  ? 'bg-gradient-to-r from-emerald-600 via-green-700 to-slate-900 text-white shadow-md shadow-emerald-500/30 border border-emerald-400/50'
+                  : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 border border-emerald-500/20'
+              }`}
+            >
+              <Skull className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span>DOOMSDAY CLOCK</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-500/40 font-bold animate-pulse">
+                DEFCON
+              </span>
+            </button>
           </div>
 
           {/* Action Buttons: Live Intel & Hero Roster */}
@@ -1844,6 +1863,17 @@ export default function App() {
             onUpgradeHero={handleUpgradeHero}
           />
         )}
+
+        {activeTab === 'doomsday' && (
+          <DoomsdayClockDashboard
+            resources={resources}
+            setResources={setResources}
+            heroes={heroes}
+            timelines={timelines}
+            addLog={addLog}
+            gameSpeed={gameSpeed}
+          />
+        )}
       </main>
 
       {/* Hero Management Drawer */}
@@ -1855,6 +1885,7 @@ export default function App() {
         resources={resources}
         onTriggerAbility={handleTriggerAbility}
         onUnassignHero={handleUnassignHero}
+        onAssignHero={handleAssignHero}
         onUpgradeHero={handleUpgradeHero}
         currentTime={currentTime}
         onOpenMCUIntel={(query) => {

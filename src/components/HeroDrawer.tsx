@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { MCUHero, ColonyBuilding, ColonyResources } from '../types';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
+import { HeroAffinityChart } from './HeroAffinityChart';
 
 interface HeroDrawerProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ interface HeroDrawerProps {
   buildings: ColonyBuilding[];
   onTriggerAbility: (heroId: string) => void;
   onUnassignHero: (heroId: string) => void;
+  onAssignHero?: (buildingId: string, heroId: string | null) => void;
   currentTime: number;
   onOpenMCUIntel?: (query: string) => void;
   resources?: ColonyResources;
@@ -55,6 +57,7 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
   buildings,
   onTriggerAbility,
   onUnassignHero,
+  onAssignHero,
   currentTime,
   onOpenMCUIntel,
   resources,
@@ -381,6 +384,13 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                 <p className="mt-2 text-xs italic text-slate-400 border-l-2 border-slate-700 pl-2">
                   "{hero.quote}"
                 </p>
+
+                {/* Deployment Diagnostic Chart: Combat Proficiency, Resource Bonus & Building Affinity */}
+                <HeroAffinityChart
+                  hero={hero}
+                  buildings={buildings}
+                  onAssignHero={onAssignHero}
+                />
 
                 {/* Multiverse Apex Ascension Status */}
                 {hero.tier === 1 && onUpgradeHero && resources && hero.upgradeCost && (
