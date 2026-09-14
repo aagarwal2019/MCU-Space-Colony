@@ -1,6 +1,6 @@
 {
   "name": "Sakaar Outpost: MCU Space Colony",
-  "description": "Build and manage a thriving space colony on the dystopian scrap world of Sakaar with MCU heroes, villains, movie canon dossiers, live search-grounded intel, and the Avengers: Doomsday Clock incursion defense dashboard.",
+  "description": "Build and manage a thriving space colony on the dystopian scrap world of Sakaar with MCU heroes, villains, character-specific UI motifs (such as Iron Man's Arc Reactor & Tobey Maguire's Earth-96283 Raimi Spider-Man), movie canon dossiers, live search-grounded intel, and the Avengers: Doomsday Clock.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

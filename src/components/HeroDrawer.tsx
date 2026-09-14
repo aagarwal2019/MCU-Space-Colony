@@ -35,6 +35,9 @@ import {
 import { MCUHero, ColonyBuilding, ColonyResources } from '../types';
 import { BUILDING_DEFINITIONS } from '../data/buildings';
 import { HeroAffinityChart } from './HeroAffinityChart';
+import { HeroStyleBackground } from './HeroStyleBackground';
+import { HeroProfileModal } from './HeroProfileModal';
+import { HeroInsignia } from './HeroInsignia';
 
 interface HeroDrawerProps {
   isOpen: boolean;
@@ -66,6 +69,7 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedHeroForProfile, setSelectedHeroForProfile] = useState<MCUHero | null>(null);
 
   if (!isOpen) return null;
 
@@ -270,14 +274,17 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                   style={{ backgroundColor: hero.accentColor }} 
                 />
 
+                {/* Character-Specific Style UI Background Motif (e.g. Iron Man Arc Reactor, Raimi Spider-Man Webbing, etc.) */}
+                <HeroStyleBackground heroId={hero.id} accentColor={hero.accentColor} tier={hero.tier} />
+
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   {/* Avatar & Identifiers */}
                   <div className="flex items-center gap-3">
                     <div 
                       className={`w-12 h-12 rounded-xl bg-gradient-to-br ${hero.avatarColor} p-0.5 shadow-md flex items-center justify-center text-white shrink-0`}
                     >
-                      <div className="w-full h-full bg-slate-950/40 rounded-[10px] flex items-center justify-center font-bold font-display text-sm">
-                        {getRoleIcon(hero.portraitIcon)}
+                      <div className="w-full h-full bg-slate-950/70 rounded-[10px] flex items-center justify-center p-1.5 overflow-hidden">
+                        <HeroInsignia heroId={hero.id} size={28} color={hero.accentColor} />
                       </div>
                     </div>
                     <div>
@@ -356,16 +363,27 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
                     )}
                   </div>
 
-                  {onOpenMCUIntel && (
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => onOpenMCUIntel(`${hero.heroName} ${hero.name} MCU movie`)}
-                      className="text-[11px] px-2 py-1 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 rounded flex items-center gap-1 transition"
-                      title="Verify canon status & live movie intel with Google Search"
+                      onClick={() => setSelectedHeroForProfile(hero)}
+                      className="text-[11px] px-2 py-1 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-500/30 rounded flex items-center gap-1 transition shadow-sm font-mono-tech"
+                      title="Inspect character-specific profile UI & background schematics"
                     >
-                      <Globe className="w-3 h-3 text-cyan-400" />
-                      <span>Live Movie Intel</span>
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>Style UI</span>
                     </button>
-                  )}
+
+                    {onOpenMCUIntel && (
+                      <button
+                        onClick={() => onOpenMCUIntel(`${hero.heroName} ${hero.name} MCU movie`)}
+                        className="text-[11px] px-2 py-1 bg-cyan-950/50 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 rounded flex items-center gap-1 transition font-mono-tech"
+                        title="Verify canon status & live movie intel with Google Search"
+                      >
+                        <Globe className="w-3 h-3 text-cyan-400" />
+                        <span>Movie Intel</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Affinity & Passive */}
@@ -471,6 +489,16 @@ export const HeroDrawer: React.FC<HeroDrawerProps> = ({
           })}
         </div>
       </div>
+
+      {/* Full-Screen Character Profile Style UI Modal */}
+      <HeroProfileModal
+        hero={selectedHeroForProfile}
+        isOpen={selectedHeroForProfile !== null}
+        onClose={() => setSelectedHeroForProfile(null)}
+        onTriggerAbility={onTriggerAbility}
+        onOpenMCUIntel={onOpenMCUIntel}
+        buildings={buildings}
+      />
     </div>
   );
 };

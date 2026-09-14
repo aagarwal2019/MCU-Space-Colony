@@ -65,6 +65,7 @@ import { ColonyLogDrawer } from './components/ColonyLogDrawer';
 import { GuideModal } from './components/GuideModal';
 import { MCUIntelModal } from './components/MCUIntelModal';
 import { DoomsdayClockDashboard } from './components/DoomsdayClockDashboard';
+import { IncursionSparkline, IncursionHistoryPoint } from './components/IncursionSparkline';
 
 const SAVE_KEY = 'sakaar_outpost_colony_v1';
 
@@ -372,6 +373,107 @@ export default function App() {
       moraleChange,
     };
   }, [buildings, heroes, researchedTechIds, resources.population, resources.power, resources.food, resources.oxygen, overclockUntil]);
+
+  // Computed threat assessment configuration based on current incursionThreat resource
+  const incursionThreatConfig = useMemo(() => {
+    const val = Math.round(resources.incursionThreat);
+    if (val >= 70) {
+      return {
+        level: 'CRITICAL',
+        stability: 'COLLAPSE IMMINENT',
+        textColor: 'text-rose-400',
+        iconColor: 'text-rose-400',
+        strokeColor: '#f43f5e',
+        badgeStyle: 'bg-rose-950/90 text-rose-300 border-rose-500/60 shadow-sm shadow-rose-950/50',
+        dotStyle: 'bg-rose-500 shadow-sm shadow-rose-500/80',
+        barColor: 'bg-rose-500',
+        pulse: true,
+        description: 'Severe multiversal friction detected. Catastrophic timeline collapse imminent!',
+      };
+    }
+    if (val >= 45) {
+      return {
+        level: 'HIGH',
+        stability: 'DESTABILIZING',
+        textColor: 'text-orange-400',
+        iconColor: 'text-orange-400',
+        strokeColor: '#f97316',
+        badgeStyle: 'bg-orange-950/80 text-orange-300 border-orange-500/50 shadow-sm shadow-orange-950/40',
+        dotStyle: 'bg-orange-400 shadow-sm shadow-orange-400/80',
+        barColor: 'bg-orange-500',
+        pulse: true,
+        description: 'Dimensional distortion multiplying across sector rifts. Timeline stability degrading.',
+      };
+    }
+    if (val >= 25) {
+      return {
+        level: 'ELEVATED',
+        stability: 'MONITORED',
+        textColor: 'text-amber-400',
+        iconColor: 'text-amber-400',
+        strokeColor: '#fbbf24',
+        badgeStyle: 'bg-amber-950/70 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-950/40',
+        dotStyle: 'bg-amber-400 shadow-sm shadow-amber-400/80',
+        barColor: 'bg-amber-400',
+        pulse: false,
+        description: 'Minor temporal divergence monitored across adjacent alternate timelines.',
+      };
+    }
+    return {
+      level: 'STABLE',
+      stability: 'NOMINAL',
+      textColor: 'text-emerald-400',
+      iconColor: 'text-emerald-400',
+      strokeColor: '#10b981',
+      badgeStyle: 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-950/40',
+      dotStyle: 'bg-emerald-400 shadow-sm shadow-emerald-400/80',
+      barColor: 'bg-emerald-400',
+      pulse: false,
+      description: 'Quantum fluctuations nominal. Colony timeline coherence is securely anchored.',
+    };
+  }, [resources.incursionThreat]);
+
+  // Incursion Threat resource history tracking over the last 10 game cycles
+  const [incursionHistory, setIncursionHistory] = useState<IncursionHistoryPoint[]>(() => {
+    const points: IncursionHistoryPoint[] = [];
+    const baseThreat = 15;
+    for (let i = 9; i >= 0; i--) {
+      const cycleNum = 1 - i;
+      const sampleThreat = i === 0
+        ? baseThreat
+        : Math.max(5, Math.min(65, Math.round(baseThreat + Math.sin((10 - i) * 1.4) * 4 - (i * 0.3))));
+      points.push({
+        cycle: cycleNum,
+        label: cycleNum > 0 ? `C${cycleNum}` : `C-${Math.abs(cycleNum) + 1}`,
+        threat: sampleThreat,
+      });
+    }
+    return points;
+  });
+
+  // Keep incursion threat history synchronized across game cycles and threat changes
+  useEffect(() => {
+    setIncursionHistory((prev) => {
+      const currentThreat = Math.round(resources.incursionThreat);
+      if (prev.length === 0) {
+        return [{ cycle, label: `C${cycle}`, threat: currentThreat }];
+      }
+      const last = prev[prev.length - 1];
+      if (last.cycle === cycle) {
+        if (last.threat === currentThreat) return prev;
+        const copy = [...prev];
+        copy[copy.length - 1] = { ...last, threat: currentThreat };
+        return copy;
+      }
+      // Sol cycle advanced: record new cycle point and keep exactly the last 10 game cycles
+      const nextPoint: IncursionHistoryPoint = {
+        cycle,
+        label: `C${cycle}`,
+        threat: currentThreat,
+      };
+      return [...prev, nextPoint].slice(-10);
+    });
+  }, [cycle, resources.incursionThreat]);
 
   // Main Simulation Loop (1-second tick scaled by gameSpeed)
   useEffect(() => {
@@ -733,10 +835,15 @@ export default function App() {
         addLog(`Tony Stark activated UNIBEAM PROTOCOL! Injected +350 MW into Arc Batteries.`, 'success');
         break;
 
-      case 'bio_heal': // Bruce Banner
+      case 'bio_heal': // Hulk (True Power Unleashed by Jean Grey)
         setBuildings(prev => prev.map(b => ({ ...b, health: b.maxHealth })));
-        setResources(prev => ({ ...prev, morale: Math.min(100, prev.morale + 25) }));
-        addLog(`Bruce Banner initiated HULK OUT REPAIR! All sector hull breaches restored to 100% (+25 Morale).`, 'success');
+        setResources(prev => ({ 
+          ...prev, 
+          morale: Math.min(100, prev.morale + 25),
+          defenseRating: prev.defenseRating + 30,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 200),
+        }));
+        addLog(`HULK UNLEASHED! Channeling the boundless gamma fury unlocked by Jean Grey in Brand New Day, Hulk repaired all sectors to 100% (+25 Morale, +30 Defense, +200 Scrap). HULK SMASH!`, 'success');
         break;
 
       case 'scrap_blast': // Rocket Raccoon
@@ -860,6 +967,23 @@ export default function App() {
           addLog(`Spider-Man webbed up falling sector debris & trapped invaders with BRAND NEW DAY WEB-GRID! Crisis averted (+220 Scrap, +20 Morale, +25 Defense).`, 'success');
         } else {
           addLog(`Spider-Man slung web-lines across the sector, catching falling orbital debris (+220 Scrap, +20 Morale, +25 Defense).`, 'success');
+        }
+        break;
+
+      case 'raimi_web_fortitude': // Spider-Man (Earth-96283 / Tobey Maguire)
+        setResources(prev => ({
+          ...prev,
+          scrap: Math.min(prev.maxScrap, prev.scrap + 260),
+          morale: Math.min(100, prev.morale + 25),
+          defenseRating: prev.defenseRating + 35,
+          incursionThreat: Math.max(0, prev.incursionThreat - 15),
+        }));
+        setBuildings(prev => prev.map(b => ({ ...b, health: Math.min(b.maxHealth, b.health + 75) })));
+        if (activeCrisis) {
+          setActiveCrisis(null);
+          addLog(`Tobey Maguire's Spider-Man (Earth-96283) anchored the outpost with ORGANIC WEB-TETHERS! Halted structural collapse, neutralized the crisis (+260 Scrap, +25 Morale, +35 Defense, -15% Incursion threat).`, 'success');
+        } else {
+          addLog(`Spider-Man (Earth-96283) anchored the outpost with high-tensile organic web cables (+260 Scrap, +25 Morale, +35 Defense, repaired structures, -15% Incursions). "With great power comes great responsibility."`, 'success');
         }
         break;
 
@@ -1660,6 +1784,7 @@ export default function App() {
         assignedWorkers: 7,
         morale: 85,
         defenseRating: 30,
+        incursionThreat: 15,
       });
       setHeroes(INITIAL_HEROES.map((h) => {
         if (h.id === 'iron_man') return { ...h, assignedBuildingId: 'b_arc_initial', status: 'assigned' };
@@ -1701,8 +1826,8 @@ export default function App() {
       {/* Main Operations Body */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 space-y-4">
         {/* Navigation Tabs Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 p-2 rounded-2xl border border-slate-800 backdrop-blur-md">
-          <div className="flex items-center gap-1.5 overflow-x-auto">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/80 p-2 rounded-2xl border border-slate-800 backdrop-blur-md relative z-20">
+          <div className="flex items-center gap-1.5 overflow-x-auto sm:overflow-visible py-1">
             <button
               onClick={() => setActiveTab('grid')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition ${
@@ -1767,17 +1892,47 @@ export default function App() {
             <button
               id="doomsday-clock-tab-btn"
               onClick={() => setActiveTab('doomsday')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition relative overflow-hidden ${
+              title={`Incursion Threat: ${incursionThreatConfig.level} (${Math.round(resources.incursionThreat)}%) • Stability: ${incursionThreatConfig.stability}`}
+              className={`group flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold font-mono-tech transition relative ${
                 activeTab === 'doomsday'
                   ? 'bg-gradient-to-r from-emerald-600 via-green-700 to-slate-900 text-white shadow-md shadow-emerald-500/30 border border-emerald-400/50'
                   : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 border border-emerald-500/20'
               }`}
             >
-              <Skull className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <Skull className={`w-4 h-4 text-emerald-400 ${incursionThreatConfig.pulse ? 'animate-pulse' : ''}`} />
               <span>DOOMSDAY CLOCK</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-500/40 font-bold animate-pulse">
-                DEFCON
+
+              {/* Dynamic Incursion Threat Level Badge */}
+              <span
+                id="doomsday-threat-level-badge"
+                className={`text-[10px] px-1.5 py-0.5 rounded-md border font-mono font-bold flex items-center gap-1 transition-colors ${incursionThreatConfig.badgeStyle} ${incursionThreatConfig.pulse ? 'animate-pulse' : ''}`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${incursionThreatConfig.dotStyle}`} />
+                <span>{incursionThreatConfig.level}</span>
+                <span className="text-[9px] opacity-80 font-normal">({Math.round(resources.incursionThreat)}%)</span>
               </span>
+
+              {/* Hover Tooltip: 10-Cycle Sparkline Trend using Recharts & Threat Assessment */}
+              <div
+                id="doomsday-threat-tooltip"
+                role="tooltip"
+                className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 w-72 rounded-xl bg-slate-950/95 border border-slate-700/80 shadow-2xl shadow-black/90 backdrop-blur-md opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-50 text-left font-sans normal-case transform group-hover:translate-y-0 translate-y-1 overflow-visible"
+              >
+                <IncursionSparkline
+                  history={incursionHistory}
+                  currentThreat={resources.incursionThreat}
+                  level={incursionThreatConfig.level}
+                  stability={incursionThreatConfig.stability}
+                  textColor={incursionThreatConfig.textColor}
+                  strokeColor={incursionThreatConfig.strokeColor}
+                  badgeStyle={incursionThreatConfig.badgeStyle}
+                  dotStyle={incursionThreatConfig.dotStyle}
+                  description={incursionThreatConfig.description}
+                />
+
+                {/* Tooltip Caret Pointer */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2.5 h-2.5 bg-slate-950 border-r border-b border-slate-700/80 rotate-45" />
+              </div>
             </button>
           </div>
 

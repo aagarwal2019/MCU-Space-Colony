@@ -23,6 +23,7 @@ import {
   ColonyResources, 
   MCUHero 
 } from '../types';
+import { HeroInsignia } from './HeroInsignia';
 import { soundFx } from '../utils/audio';
 
 interface MultiverseNexusViewProps {
@@ -729,8 +730,10 @@ export const MultiverseNexusView: React.FC<MultiverseNexusViewProps> = ({
                         </div>
                       </div>
 
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${hero.avatarColor} flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-md`}>
-                        {hero.name.slice(0, 2).toUpperCase()}
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${hero.avatarColor} p-0.5 flex items-center justify-center text-white shrink-0 shadow-md`}>
+                        <div className="w-full h-full bg-slate-950/80 rounded-[9px] flex items-center justify-center p-1 overflow-hidden">
+                          <HeroInsignia heroId={hero.id} size={22} color={hero.accentColor} />
+                        </div>
                       </div>
                     </div>
 

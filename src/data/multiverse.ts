@@ -24,6 +24,28 @@ export const INITIAL_TIMELINES: MultiverseTimeline[] = [
     lastStabilizedAt: 0,
   },
   {
+    id: 'earth_96283',
+    name: 'Raimi Spider-Man Universe (Earth-96283)',
+    realityCode: 'Earth-96283',
+    status: 'harmonized',
+    stabilityPercent: 86,
+    incursionRisk: 16,
+    description: 'The universe of the Sam Raimi Spider-Man Trilogy featuring Tobey Maguire as Peter Parker / Spider-Man, battling Green Goblin, Doctor Octopus, Sandman, and Venom.',
+    lore: 'Earth-96283 is the iconic reality where Peter Parker first learned that "With great power comes great responsibility." Linking Sakaar\'s transponders to Earth-96283 deploys high-tensile organic webbing to reinforce damaged sectors and bolster colony morale.',
+    activePerk: '+35 Colony Defense Rating & organic web reinforcements reduce building breakdown by 40%',
+    stabilizeCost: {
+      power: 130,
+      scrap: 150,
+      vibraniumCredits: 30,
+    },
+    siphonReward: {
+      chronoCores: 2,
+      vibraniumCredits: 45,
+      scrap: 220,
+    },
+    lastStabilizedAt: 0,
+  },
+  {
     id: 'earth_838',
     name: 'The Illuminati Realm (Earth-838)',
     realityCode: 'Earth-838',

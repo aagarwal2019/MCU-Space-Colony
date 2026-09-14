@@ -61,6 +61,7 @@ export interface MCUHero {
       | 'oxe_buyout'
       | 'dodc_lockdown'
       | 'spider_web_strike'
+      | 'raimi_web_fortitude'
       | 'ten_rings_strike'
       | 'ionic_overdrive'
       | 'widow_tactical_strike'
@@ -92,11 +93,57 @@ export interface GroundingWebChunk {
   };
 }
 
+export interface MCUWikiInfobox {
+  category: 'character' | 'movie' | 'tv' | 'organization' | 'item' | 'general';
+  realName?: string;
+  aliases?: string[];
+  actor?: string;
+  director?: string;
+  showrunner?: string;
+  network?: string;
+  episodes?: string;
+  seasons?: string;
+  writers?: string[];
+  producers?: string[];
+  release?: string;
+  runtime?: string;
+  boxoffice?: string;
+  previousFilm?: string;
+  nextFilm?: string;
+  movies?: string[];
+  status?: string;
+  species?: string;
+  citizenship?: string;
+  quote?: string;
+  imageUrl?: string;
+}
+
+export interface MCUWikiArticle {
+  pageId: number;
+  title: string;
+  canonicalUrl: string;
+  snippet?: string;
+  imageUrl?: string;
+  infobox?: MCUWikiInfobox;
+  leadParagraph?: string;
+  synopsis?: string;
+  powersAndAbilities?: string[];
+  equipment?: string[];
+  quotes?: string[];
+  relatedPages?: { title: string; url: string; snippet?: string }[];
+  categories?: string[];
+  apiEndpointUsed?: string;
+  rawApiParams?: Record<string, string>;
+}
+
 export interface MCUSearchIntelResponse {
   query: string;
   analysis: string;
   sources: { uri: string; title: string }[];
   timestamp: number;
+  wiki?: MCUWikiArticle;
+  sourceType: 'fandom_mediawiki' | 'gemini_grounded' | 'hybrid';
+  apiNotice?: string;
 }
 
 export type BuildingType = 
